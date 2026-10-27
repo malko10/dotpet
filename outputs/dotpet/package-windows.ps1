@@ -1,7 +1,7 @@
 param(
     [string] $JavaHome = $env:JAVA_HOME,
-    [string] $Destination = (Join-Path $PSScriptRoot '..\DoTPet-Windows-v0.3.1'),
-    [string] $AppVersion = '0.3.1'
+    [string] $Destination = (Join-Path $PSScriptRoot '..\DoTPet-Windows-v0.4'),
+    [string] $AppVersion = '0.4.0'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -87,6 +87,9 @@ DoT Pet 실행 방법
 
 전역 단축키/휠 드래그: 좌클릭 → 키 설정에서 직접 켜고 저장하세요.
 오토 클릭 긴급 중지: 기본 F8 (키 설정에서 변경 가능)
+붙여넣기 / 붙여넣고 Enter: 키 설정에서 원하는 단축키나 휠 제스처를 연결하세요.
+프로그램 설정에서 걷기·중력·수다·항상 위 표시·크기·위치 기억을 바꿀 수 있습니다.
+적용한 캐릭터와 애니메이션, 마지막 위치는 다음 실행에도 복원됩니다.
 전역 입력을 끈 상태에서도 직접 시작한 오토 클릭 동안에는 긴급 중지 키가 작동합니다.
 
 무한 클릭: 좌클릭 → 빠른 작업 → 무한 반복 체크 → 오토 클릭 시작

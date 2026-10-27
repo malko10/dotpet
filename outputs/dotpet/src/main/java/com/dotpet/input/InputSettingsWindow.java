@@ -99,7 +99,7 @@ public final class InputSettingsWindow {
             clear.setOnAction(event -> clearBinding(action));
             keyGrid.addRow(row++, name, key, clear);
         }
-        Label keyHelp = label("키 칸 클릭 → 키 조합 누르기. Ctrl+Alt 조합을 권장해요. 긴급 중지는 필수입니다.\n앱 내부 단축키까지 모두 검사할 수는 없으며, Windows에 등록된 전역 단축키 충돌은 저장 시 안내합니다.");
+        Label keyHelp = label("키 칸 클릭 → 키 조합 누르기. Ctrl+Alt 조합을 권장해요. 긴급 중지는 필수입니다.\n‘붙여넣기’와 ‘붙여넣고 Enter’는 현재 클립보드를 사용합니다. 등록 문구와는 별개예요.\n앱 내부 단축키까지 모두 검사할 수는 없으며, Windows에 등록된 전역 단축키 충돌은 저장 시 안내합니다.");
         keyHelp.setWrapText(true);
 
         GridPane gestureGrid = new GridPane(); gestureGrid.setHgap(10); gestureGrid.setVgap(8);
@@ -186,7 +186,7 @@ public final class InputSettingsWindow {
         InputSettings defaults = InputSettings.defaults();
         hotkeysEnabled.setSelected(false); gesturesEnabled.setSelected(false);
         bindings.clear(); bindings.putAll(defaults.hotkeys());
-        fields.forEach((action, field) -> field.setText(bindings.get(action).toString()));
+        fields.forEach((action, field) -> field.setText(bindings.containsKey(action) ? bindings.get(action).toString() : "사용 안 함"));
         gestureChoices.forEach((direction, choice) -> choice.setValue(defaults.gestures().get(direction)));
         threshold.getValueFactory().setValue(defaults.gestureThreshold());
         validate(); feedback.setText("기본 조합으로 되돌렸어요. 저장하면 적용됩니다.");

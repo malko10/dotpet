@@ -698,17 +698,18 @@ public final class PixelEditorWindow {
                 for (int pi = 0; pi < pixels.length; pi++) {
                     if (pi > 0) json.append(",");
                     if (pi % project.getCanvasSize() == 0) json.append("\n        ");
-                    json.append(String.format("\"%08X\"", pixels[pi]));
+                    json.append('"').append(java.util.HexFormat.of().withUpperCase().toHexDigits(pixels[pi])).append('"');
                 }
                 json.append("\n      ]");
             }
             json.append("\n    ]");
         }
         json.append("\n  }\n}\n");
-        Files.writeString(path, json);
+        com.dotpet.storage.AtomicFiles.writeString(path, json.toString());
     }
 
     public static PetAnimationProject loadProject(Path path) throws IOException {
+        if(Files.size(path)>64L*1024*1024)throw new IOException("프로젝트 파일이 너무 큽니다.");
         return readProject(Files.readString(path));
     }
 
@@ -740,7 +741,7 @@ public final class PixelEditorWindow {
         } catch (Exception ex) { showError("파일을 열 수 없습니다", ex); }
     }
 
-    private static PetAnimationProject readProject(String json) throws IOException {
+    public static PetAnimationProject readProject(String json) throws IOException {
         int width = parseNumber(json, "width");
         int height = parseNumber(json, "height");
         if (width != height || (width != 16 && width != 32 && width != 64)) throw new IOException("지원하지 않는 캔버스입니다.");

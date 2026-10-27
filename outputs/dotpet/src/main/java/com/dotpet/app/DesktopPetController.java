@@ -3,7 +3,6 @@ package com.dotpet.app;
 import com.dotpet.menu.RadialMenu;
 import com.dotpet.menu.RadialMenuAction;
 import com.dotpet.menu.PetContextMenu;
-import com.dotpet.editor.PixelEditorWindow;
 import com.dotpet.customization.PetCustomization;
 import com.dotpet.customization.PetCustomizationWindow;
 import com.dotpet.pet.Pet;
@@ -19,6 +18,9 @@ import com.dotpet.input.InputSettingsWindow;
 import com.dotpet.input.WindowsInputService;
 import com.dotpet.settings.InputSettings;
 import com.dotpet.settings.SettingsService;
+import com.dotpet.settings.ProgramSettings;
+import com.dotpet.settings.ProgramSettingsWindow;
+import com.dotpet.storage.ActivePetRepository;
 import java.util.ArrayDeque;
 import java.util.Iterator;
 import java.util.concurrent.CompletableFuture;
@@ -26,19 +28,19 @@ import java.util.concurrent.CompletionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
+import javafx.beans.property.ReadOnlyStringWrapper;
 import javafx.animation.AnimationTimer;
 import javafx.application.Platform;
 import javafx.geometry.Rectangle2D;
 import javafx.scene.Scene;
 import javafx.scene.canvas.Canvas;
-import javafx.scene.control.Button;
-import javafx.scene.control.Label;
 import javafx.scene.Cursor;
 import javafx.scene.input.ContextMenuEvent;
 import javafx.scene.input.KeyCode;
 import javafx.scene.input.MouseButton;
 import javafx.scene.input.MouseEvent;
-import javafx.scene.layout.VBox;
 import javafx.scene.layout.StackPane;
 import javafx.scene.paint.Color;
 import javafx.stage.Stage;
@@ -60,7 +62,7 @@ final class DesktopPetController {
     private final PetContextMenu contextMenu;
     private final SettingsService settingsService = new SettingsService();
     private final ExecutorService settingsExecutor = Executors.newSingleThreadExecutor(task -> {
-        Thread thread = new Thread(task, "dotpet-settings"); thread.setDaemon(true); return thread;
+        return new Thread(task, "dotpet-settings");
     });
     private final WindowsInputService inputService;
     private final QuickActionService quickActions;
@@ -72,7 +74,16 @@ final class DesktopPetController {
     private volatile InputSettings inputSettings;
     private volatile String inputNotice = "";
     private Stage featureStage;
-    private boolean closing;
+    private volatile boolean closing;
+    private boolean ready;
+    private ProgramSettings programSettings = ProgramSettings.defaults();
+    private final ActivePetRepository activePetRepository = new ActivePetRepository(settingsService.getDirectory());
+    private PetCustomization currentCustomization;
+    private final ReadOnlyStringWrapper persistenceStatus = new ReadOnlyStringWrapper("설정을 불러오는 중이에요…");
+    private final AtomicReference<ProgramSettings> pendingProgram = new AtomicReference<>();
+    private final AtomicBoolean programWriteQueued = new AtomicBoolean();
+    private volatile ProgramSettings lastRequestedProgram;
+    private long lastCheckpoint;
     private final ArrayDeque<DragSample> dragSamples = new ArrayDeque<>();
     private boolean primaryPressed;
     private boolean dragging;
@@ -94,8 +105,7 @@ final class DesktopPetController {
         this.pet = pet;
         this.movement = movement;
         this.renderer = renderer;
-        this.inputSettings = settingsService.loadInputSettings();
-        this.inputNotice = settingsService.getLoadNotice();
+        this.inputSettings = InputSettings.defaults();
         this.inputService = new WindowsInputService(settingsService.getDirectory(), this::handleGlobalAction, this::reportInputFailure);
         this.quickActions = new QuickActionService(inputService, () -> inputSettings, this::applyInputSettings);
         this.statusView = new DesktopStatusView(stage, pet, movement.getScreenBounds());
@@ -112,14 +122,15 @@ final class DesktopPetController {
                 statusView.reposition();
                 updateSpeech(now);
                 updateAngerEffect();
+                if (now - lastCheckpoint >= 2_000_000_000L) { lastCheckpoint = now; saveProgramSnapshot(); }
             }
         };
         this.radialMenu = new RadialMenu(this::updateMenuPause, this::openFeatureWindow);
         this.contextMenu = new PetContextMenu(
                 pet::isMovementEnabled,
                 movement::isGravityRemoved,
-                () -> movement.setMovementEnabled(!pet.isMovementEnabled()),
-                () -> movement.setGravityRemoved(!movement.isGravityRemoved()),
+                () -> setMovementEnabled(!pet.isMovementEnabled()),
+                () -> {movement.setGravityRemoved(!movement.isGravityRemoved());saveProgramSnapshot();},
                 stage::close,
                 this::updateMenuPause);
 
@@ -153,14 +164,28 @@ final class DesktopPetController {
     }
 
     void start() {
-        renderer.render(pet, System.nanoTime());
-        timer.start();
-        inputService.configure(inputSettings).whenComplete((ignored, failure) -> {
-            if (failure != null) reportInputFailure("전역 입력 시작 실패: " + failureMessage(failure));
-            else if (!inputNotice.isBlank()) quickActions.report(inputNotice);
-            else quickActions.report(inputSettings.hotkeysEnabled() || inputSettings.gesturesEnabled()
-                    ? "설정한 전역 입력을 사용할 수 있어요." : "전역 입력은 꺼져 있어요. 키 설정에서 켤 수 있습니다.");
-        });
+        CompletableFuture.supplyAsync(() -> new StartupData(settingsService.loadInputSettings(),
+                settingsService.loadProgramSettings(), activePetRepository.load().orElse(null)), settingsExecutor)
+                .whenComplete((loaded, failure) -> Platform.runLater(() -> {
+                    if (closing) return;
+                    StartupData restored = failure == null ? loaded : new StartupData(InputSettings.defaults(), ProgramSettings.defaults(), null);
+                    inputSettings = restored.input();inputNotice = settingsService.getLoadNotice();programSettings = restored.program();
+                    if (restored.profile() != null) applyAppearance(restored.profile());
+                    applyProgramPreferences(programSettings);
+                    if (programSettings.rememberPosition() && programSettings.hasPosition()) {
+                        movement.beginDrag();pet.moveToClamped(programSettings.x(),programSettings.y(),movement.getScreenBounds());movement.endDrag(0,0);
+                    } else returnToGround();
+                    placeWindowAtPetPosition();
+                    ready = true;renderer.render(pet,System.nanoTime());stage.show();timer.start();
+                    persistenceStatus.set("설정과 적용한 캐릭터를 자동으로 저장합니다.");
+                    String startupNotice = String.join(" ", inputNotice,settingsService.getProgramLoadNotice(),activePetRepository.getLoadNotice()).trim();
+                    if (failure != null) startupNotice = "설정을 불러오지 못해 기본값으로 시작했어요. 기존 데이터는 보존했습니다.";
+                    final String notice = startupNotice;
+                    inputService.configure(inputSettings).whenComplete((ignored, inputFailure) -> {
+                        if (inputFailure != null) reportInputFailure("전역 입력 시작 실패: " + failureMessage(inputFailure));
+                        else quickActions.report(notice.isBlank() ? "설정은 자동 저장됩니다. 필요한 기능은 펫 메뉴에서 열어 보세요." : notice);
+                    });
+                }));
     }
 
     void stop() {
@@ -170,7 +195,12 @@ final class DesktopPetController {
         timer.stop();
         quickActions.close();
         inputService.close();
-        settingsExecutor.shutdownNow();
+        if (ready) {
+            ProgramSettings snapshot = captureProgramSettings();PetCustomization profile = currentCustomization;
+            settingsExecutor.execute(() -> {try {if(profile!=null)activePetRepository.save(profile);settingsService.saveProgramSettings(snapshot);}
+                catch(Exception failure){settingsService.recordFailure("종료 설정 저장",failure);}});
+        }
+        settingsExecutor.shutdown();
         statusView.close();
         speechBubble.close();
         angerEffect.close();
@@ -234,6 +264,7 @@ final class DesktopPetController {
             movement.endDrag(velocity[0], velocity[1]);
             dragging = false;
             dragReleaseTimeNanos = now;
+            saveProgramSnapshot();
         }
     }
 
@@ -298,6 +329,7 @@ final class DesktopPetController {
 
     private void setMovementEnabled(boolean enabled) {
         movement.setMovementEnabled(enabled);
+        saveProgramSnapshot();
     }
 
     private void showContextMenu() {
@@ -337,32 +369,25 @@ final class DesktopPetController {
             return;
         }
         if (action == RadialMenuAction.PET_CUSTOMIZATION) {
+            PetCustomization active = currentCustomization == null ? new PetCustomization("builtin", "기본 캐릭터",
+                    renderer.createBuiltInEditableAnimations(),pet.getSize()/DEFAULT_PET_SIZE,false,Color.WHITE) : currentCustomization;
             PetCustomizationWindow window = new PetCustomizationWindow(stage,
-                    renderer.createBuiltInEditableAnimations(), this::applyCustomization, this::featureClosed);
+                    renderer.createBuiltInEditableAnimations(),active,this::applyCustomization,this::featureClosed);
             featureStage = window.getStage(); window.show();
             return;
         }
-        Stage window = new Stage();
-        featureStage = window;
-        window.initOwner(stage);
-        window.setOnHidden(event -> featureClosed());
-        window.setTitle(action.getLabel());
-        Label title = new Label(action.getLabel());
-        title.setStyle("-fx-text-fill: #F3F6FC; -fx-font-size: 20px; -fx-font-weight: bold;");
-        Label explanation = new Label("이 항목의 실제 도구는 다음 개발 단계에서 연결됩니다.");
-        explanation.setWrapText(true);
-        explanation.setStyle("-fx-text-fill: #C5D0E0; -fx-font-size: 13px;");
-        Button close = new Button("닫기"); close.setOnAction(event -> window.close());
-        VBox content = new VBox(14, title, explanation, close);
-        content.setStyle("-fx-background-color: #1A2233; -fx-padding: 24px;");
-        window.setScene(new Scene(content, 330, 150, Color.web("#1A2233")));
-        window.show(); window.toFront();
+        if (action == RadialMenuAction.PROGRAM_SETTINGS) {
+            ProgramSettingsWindow window = new ProgramSettingsWindow(stage,this::captureProgramSettings,this::changeProgramSettings,
+                    persistenceStatus.getReadOnlyProperty(),settingsService.getDirectory(),this::returnToGround,this::featureClosed);
+            featureStage = window.getStage();window.show();return;
+        }
+        throw new IllegalArgumentException("알 수 없는 펫 메뉴입니다.");
     }
 
     private void featureClosed() {
         featureStage = null;
         if (closing) return;
-        stage.setAlwaysOnTop(true);
+        stage.setAlwaysOnTop(programSettings.alwaysOnTop());
         stage.toFront();
         updateMenuPause(false);
     }
@@ -398,6 +423,8 @@ final class DesktopPetController {
                 case COPY_BROWSER_URL -> quickActions.copyBrowserUrl(0);
                 case COPY_TEXT -> quickActions.copyText();
                 case PASTE_TEXT -> quickActions.pasteText(0);
+                case PASTE_CLIPBOARD -> quickActions.pasteClipboard(false);
+                case PASTE_CLIPBOARD_ENTER -> quickActions.pasteClipboard(true);
                 case START_AUTO_CLICK -> quickActions.startAutoClick();
                 case COPY_FILE_PATH -> {
                     movement.setInteractionPaused(true);
@@ -410,6 +437,7 @@ final class DesktopPetController {
                 }
                 case TOGGLE_GRAVITY -> {
                     movement.setGravityRemoved(!movement.isGravityRemoved());
+                    saveProgramSnapshot();
                     quickActions.report(movement.isGravityRemoved() ? "현재 위치에 펫을 고정했어요." : "중력을 다시 켰어요.");
                 }
             }
@@ -428,7 +456,7 @@ final class DesktopPetController {
     }
 
     private void updateSpeech(long now) {
-        boolean busy = closing || primaryPressed || dragging || radialMenu.isShowing() || contextMenu.isShowing()
+        boolean busy = !programSettings.speechEnabled() || closing || primaryPressed || dragging || radialMenu.isShowing() || contextMenu.isShowing()
                 || (featureStage != null && featureStage.isShowing()) || quickActions.isBusy() || statusView.isShowing()
                 || pet.getState() == PetState.FALLING || pet.getState() == PetState.WALL_HIT
                 || pet.getState() == PetState.LANDING || pet.getState() == PetState.SLEEPING;
@@ -446,6 +474,14 @@ final class DesktopPetController {
         return failure.getMessage();
     }
     private void applyCustomization(PetCustomization customization) {
+        applyAppearance(customization);
+        settingsExecutor.execute(() -> {try {activePetRepository.save(customization);}
+            catch(Exception failure){reportPersistenceFailure("펫 저장",failure);}});
+        saveProgramSnapshot();
+    }
+
+    private void applyAppearance(PetCustomization customization) {
+        currentCustomization = customization;
         renderer.applyUserAnimations(customization.animations());
         renderer.setTintColor(customization.tint());
         renderer.setHorizontalFlip(customization.horizontalFlip());
@@ -458,6 +494,58 @@ final class DesktopPetController {
         stage.sizeToScene();
         placeWindowAtPetPosition();
     }
+
+    private ProgramSettings captureProgramSettings() {
+        boolean remember = programSettings.rememberPosition();
+        return new ProgramSettings(pet.isMovementEnabled(),!movement.isGravityRemoved(),programSettings.speechEnabled(),
+                programSettings.alwaysOnTop(),remember,remember,remember?pet.getX():0,remember?pet.getY():0,pet.getSize()/DEFAULT_PET_SIZE);
+    }
+
+    private void changeProgramSettings(ProgramSettings next) {
+        applyProgramPreferences(next);saveProgramSnapshot();
+    }
+
+    private void applyProgramPreferences(ProgramSettings next) {
+        programSettings = next;
+        movement.setMovementEnabled(next.movementEnabled());
+        if (movement.isGravityRemoved() == next.gravityEnabled()) movement.setGravityRemoved(!next.gravityEnabled());
+        double size = DEFAULT_PET_SIZE * next.sizeScale();pet.resize(size,movement.getScreenBounds());canvas.setWidth(size);canvas.setHeight(size);
+        if(stage.getScene().getRoot() instanceof StackPane root)root.setPrefSize(size,size);
+        stage.sizeToScene();placeWindowAtPetPosition();
+        stage.setAlwaysOnTop(next.alwaysOnTop() && (featureStage==null || !featureStage.isShowing()));
+        if(!next.speechEnabled())speechBubble.hide();
+        if(currentCustomization!=null)currentCustomization=new PetCustomization(currentCustomization.id(),currentCustomization.name(),
+                currentCustomization.animations(),next.sizeScale(),currentCustomization.horizontalFlip(),currentCustomization.tint());
+    }
+
+    private void returnToGround() {
+        movement.beginDrag();pet.moveToClamped(pet.getX(),movement.getGroundY(),movement.getScreenBounds());movement.endDrag(0,0);
+        placeWindowAtPetPosition();saveProgramSnapshot();
+    }
+
+    private void saveProgramSnapshot() {
+        if(!ready || closing)return;
+        ProgramSettings snapshot=captureProgramSettings();
+        if(snapshot.equals(lastRequestedProgram))return;
+        lastRequestedProgram=snapshot;pendingProgram.set(snapshot);queueProgramWrite();
+    }
+
+    private void queueProgramWrite() {
+        if(closing || !programWriteQueued.compareAndSet(false,true))return;
+        settingsExecutor.execute(() -> {
+            try {ProgramSettings snapshot;while((snapshot=pendingProgram.getAndSet(null))!=null){settingsService.saveProgramSettings(snapshot);}
+                if(!closing)Platform.runLater(() -> {if(!closing)persistenceStatus.set("변경 사항을 자동 저장했어요.");});
+            }catch(Exception failure){lastRequestedProgram=null;reportPersistenceFailure("설정 저장",failure);}
+            finally {programWriteQueued.set(false);if(pendingProgram.get()!=null && !closing)queueProgramWrite();}
+        });
+    }
+
+    private void reportPersistenceFailure(String operation,Exception failure) {
+        settingsService.recordFailure(operation,failure);
+        if(!closing)Platform.runLater(() -> {if(!closing){persistenceStatus.set(operation+" 실패: "+failure.getMessage());quickActions.report(operation+"에 실패했어요. 사용자 폴더의 저장 공간과 권한을 확인하세요.");}});
+    }
+
+    private record StartupData(InputSettings input,ProgramSettings program,PetCustomization profile) { }
 
     private record DragSample(double x, double y, long timestampNanos) {
     }

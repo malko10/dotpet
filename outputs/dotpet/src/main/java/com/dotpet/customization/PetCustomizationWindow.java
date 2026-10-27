@@ -12,6 +12,12 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
+import java.util.concurrent.Callable;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import javafx.application.Platform;
 import javafx.scene.Scene;
 import javafx.scene.canvas.Canvas;
 import javafx.scene.canvas.GraphicsContext;
@@ -48,25 +54,34 @@ public final class PetCustomizationWindow {
     private final Runnable onHidden;
     private PetCustomization selected;
     private boolean updating;
+    private boolean closed, loadingStarted;
+    private final ExecutorService files = Executors.newSingleThreadExecutor(task -> new Thread(task,"dotpet-profile-files"));
 
     public PetCustomizationWindow(Stage owner, Map<PetState, Animation> builtInAnimations,
+            Consumer<PetCustomization> applyHandler, Runnable onHidden) {
+        this(owner,builtInAnimations,null,applyHandler,onHidden);
+    }
+
+    public PetCustomizationWindow(Stage owner, Map<PetState, Animation> builtInAnimations, PetCustomization active,
             Consumer<PetCustomization> applyHandler, Runnable onHidden) {
         stage.initOwner(owner);
         stage.setTitle("DoT Pet · 캐릭터 꾸미기");
         this.applyHandler = applyHandler;
         this.onHidden = onHidden;
         profiles.add(new PetCustomization("builtin", "기본 캐릭터", builtInAnimations, 1, false, Color.WHITE));
-        try { profiles.addAll(repository.loadProfiles()); }
-        catch (IOException ex) { showError("저장된 캐릭터를 읽지 못했습니다", ex); }
-        selected = profiles.getFirst();
+        if(active!=null){if(active.id().equals("builtin"))profiles.set(0,active);else profiles.add(active);}
+        selected = active==null?profiles.getFirst():active;
         stage.setScene(new Scene(createContent(), 720, 510, Color.web("#111824")));
         stage.setMinWidth(680);
         stage.setMinHeight(480);
-        stage.setOnHidden(event -> onHidden.run());
+        stage.setOnHidden(event -> {closed=true;files.shutdown();onHidden.run();});
         loadSelectedProfile();
     }
 
-    public void show() { stage.show(); stage.toFront(); }
+    public void show() {
+        stage.show();stage.toFront();
+        if(!loadingStarted){loadingStarted=true;loadProfiles();}
+    }
     public Stage getStage() { return stage; }
 
     private BorderPane createContent() {
@@ -123,7 +138,7 @@ public final class PetCustomizationWindow {
         root.setCenter(center);
 
         Label help = new Label("캐릭터를 선택하거나 .dotpet 프로젝트를 불러온 뒤 크기·방향·색조를 조정하세요.\n"
-                + "‘저장’은 사용자 폴더에 캐릭터를 보관하고, ‘펫에 적용’은 현재 데스크톱 펫에 반영합니다.");
+                + "‘캐릭터 저장’은 목록에 보관하고, ‘펫에 적용’은 현재 펫과 다음 실행에 반영합니다.");
         help.setWrapText(true);
         help.setStyle("-fx-text-fill: #AEBBD0; -fx-padding: 8 0;");
         Button edit = button("픽셀 / 애니메이션 편집");
@@ -132,7 +147,7 @@ public final class PetCustomizationWindow {
         save.setOnAction(event -> saveProfile());
         Button apply = button("펫에 적용 후 닫기");
         apply.setOnAction(event -> {
-            PetCustomization customization = fromControls(selected.id(), selected.name(), selected.animations());
+            PetCustomization customization = fromControls(selected.id(), displayName(), selected.animations());
             applyHandler.accept(customization);
             stage.close();
         });
@@ -198,33 +213,35 @@ public final class PetCustomizationWindow {
         chooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("DoT Pet 프로젝트", "*.dotpet"));
         var file = chooser.showOpenDialog(stage);
         if (file == null) return;
-        try {
+        runFileTask("캐릭터 불러오기",() -> {
             PetAnimationProject project = PixelEditorWindow.loadProject(file.toPath());
             String name = file.getName().replaceFirst("(?i)\\.dotpet$", "");
             String id = "user-" + name.toLowerCase().replaceAll("[^a-z0-9가-힣_-]+", "-");
-            PetCustomization imported = repository.save(new PetCustomization(id, name, project.toAnimations(),
+            return repository.save(new PetCustomization(id, name, project.toAnimations(),
                     1.0, false, Color.WHITE));
+        },imported -> {
             profiles.removeIf(profile -> profile.id().equals(imported.id()));
             profiles.add(imported);
             profilePicker.getItems().setAll(profiles);
             selected = imported;
             loadSelectedProfile();
             status.setText("캐릭터를 불러왔습니다.");
-        } catch (Exception ex) { showError("캐릭터를 불러오지 못했습니다", ex); }
+        });
     }
 
     private void saveProfile() {
         String name = nameField.getText() == null ? "" : nameField.getText().trim();
         if (name.isBlank()) { showError("캐릭터 이름을 입력하세요", new IllegalArgumentException("저장하려면 캐릭터 이름이 필요합니다.")); return; }
         String id = selected.id().equals("builtin") ? "user-" + name.toLowerCase().replaceAll("[^a-z0-9가-힣_-]+", "-") : selected.id();
-        try {
-            selected = repository.save(fromControls(id, name, selected.animations()));
+        PetCustomization candidate=fromControls(id,name,selected.animations());
+        runFileTask("캐릭터 저장",() -> repository.save(candidate),saved -> {
+            selected=saved;
             profiles.removeIf(profile -> profile.id().equals(selected.id()));
             profiles.add(selected);
             profilePicker.getItems().setAll(profiles);
             profilePicker.setValue(selected);
             status.setText("캐릭터를 사용자 폴더에 저장했습니다.");
-        } catch (IOException ex) { showError("캐릭터 저장 실패", ex); }
+        });
     }
 
     private void openEditor() {
@@ -232,12 +249,14 @@ public final class PetCustomizationWindow {
                 selected.animations().get(PetState.IDLE).getFrame(0), selected.animations());
         PixelEditorWindow editor = new PixelEditorWindow(stage, project.getFrame(PetState.IDLE, 0),
                 selected.animations(), edited -> {
-                    selected = fromControls(selected.id(), selected.name(), edited);
+                    String id=selected.id().equals("builtin")?"user-"+java.util.UUID.randomUUID():selected.id();
+                    selected = fromControls(id, displayName(), edited);
                     int index = profileIndex(selected.id());
-                    if (index >= 0) profiles.set(index, selected);
+                    if (index >= 0) profiles.set(index, selected);else profiles.add(selected);
+                    updating=true;profilePicker.getItems().setAll(profiles);profilePicker.setValue(selected);updating=false;
                     drawPreview();
                     applyHandler.accept(selected);
-                    status.setText("편집한 애니메이션을 펫에 적용했습니다. 저장하면 다시 실행해도 유지됩니다.");
+                    status.setText("편집한 펫은 다음 실행에도 복원됩니다. 목록에 보관하려면 캐릭터 저장을 누르세요.");
                 }, () -> stage.toFront(), this::registerNewProfile);
         editor.show();
     }
@@ -261,6 +280,29 @@ public final class PetCustomizationWindow {
     private int profileIndex(String id) {
         for (int i = 0; i < profiles.size(); i++) if (profiles.get(i).id().equals(id)) return i;
         return -1;
+    }
+
+    private String displayName(){String name=nameField.getText();return name==null||name.isBlank()?selected.name():name.trim();}
+
+    private void loadProfiles(){
+        CompletableFuture.supplyAsync(() -> {try{return repository.loadProfiles();}catch(IOException failure){throw new CompletionException(failure);}},files)
+                .whenComplete((loaded,failure) -> Platform.runLater(() -> {
+                    if(closed)return;
+                    if(failure!=null){status.setText("캐릭터 목록을 읽지 못했어요. 기존 파일은 보존했습니다.");return;}
+                    for(PetCustomization profile:loaded)if(profileIndex(profile.id())<0)profiles.add(profile);
+                    updating=true;profilePicker.getItems().setAll(profiles);profilePicker.setValue(selected);updating=false;
+                    if(!repository.getLoadNotice().isBlank())status.setText(repository.getLoadNotice());
+                }));
+    }
+
+    private <T> void runFileTask(String operation,Callable<T> task,Consumer<T> done){
+        stage.getScene().getRoot().setDisable(true);status.setText(operation+" 중…");
+        CompletableFuture.supplyAsync(() -> {try{return task.call();}catch(Exception failure){throw new CompletionException(failure);}},files)
+                .whenComplete((result,failure) -> Platform.runLater(() -> {
+                    if(closed)return;stage.getScene().getRoot().setDisable(false);
+                    if(failure!=null){Throwable cause=failure;while(cause.getCause()!=null)cause=cause.getCause();showError(operation+" 실패",new IOException(cause.getMessage(),cause));}
+                    else done.accept(result);
+                }));
     }
 
     private static int multiply(int channel, double tint) { return (int) Math.round(channel * tint); }

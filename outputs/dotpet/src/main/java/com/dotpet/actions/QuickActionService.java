@@ -157,6 +157,18 @@ public final class QuickActionService implements AutoCloseable {
         }
     }
 
+    /** Uses the existing clipboard as-is; never reads, replaces or persists its contents. */
+    public void pasteClipboard(boolean pressEnter) {
+        long run = begin(); if (run < 0) return;
+        runWorker(run, () -> {
+            new TextPasteAction().pasteClipboardText(pressEnter);
+            if (generation.get() == run) {
+                report(pressEnter ? "붙여넣고 Enter를 입력했어요." : "클립보드 내용을 붙여넣었어요.");
+                finish(run);
+            }
+        });
+    }
+
     private void completeAutoClick(long run) {
         synchronized (runLock) {
             if (generation.get() != run) return;

@@ -19,13 +19,10 @@ import javafx.scene.paint.Color;
 /** Stores user-created character profiles outside the application directory. */
 public final class PetProfileRepository {
     private final Path directory;
+    private String loadNotice = "";
 
     public PetProfileRepository() {
-        String appData = System.getenv("APPDATA");
-        Path base = appData == null || appData.isBlank()
-                ? Path.of(System.getProperty("user.home"), ".dotpet")
-                : Path.of(appData, "DoTPet");
-        directory = base.resolve("pets");
+        directory = new com.dotpet.settings.SettingsService().getDirectory().resolve("pets");
     }
 
     public PetProfileRepository(Path directory) {
@@ -51,7 +48,7 @@ public final class PetProfileRepository {
                     Color tint = parseColor(metadata.getProperty("tint", "#FFFFFFFF"));
                     profiles.add(new PetCustomization(id, name, project.toAnimations(), scale, flip, tint));
                 } catch (RuntimeException | IOException ignored) {
-                    // Leave a damaged profile in place and continue loading the rest.
+                    loadNotice = "일부 캐릭터를 읽지 못했습니다. 해당 파일은 보존했어요.";
                 }
             }
         }
@@ -75,14 +72,13 @@ public final class PetProfileRepository {
         metadata.setProperty("sizeScale", Double.toString(profile.sizeScale()));
         metadata.setProperty("horizontalFlip", Boolean.toString(profile.horizontalFlip()));
         metadata.setProperty("tint", colorHex(profile.tint()));
-        try (var writer = Files.newBufferedWriter(directory.resolve(id + ".properties"))) {
-            metadata.store(writer, "DoT Pet character appearance");
-        }
+        AtomicFiles.writeProperties(directory.resolve(id + ".properties"), metadata, true);
         return new PetCustomization(id, profile.name(), project.toAnimations(), profile.sizeScale(),
                 profile.horizontalFlip(), profile.tint());
     }
 
     public Path getDirectory() { return directory; }
+    public String getLoadNotice() { return loadNotice; }
 
     private static String sanitize(String text) {
         String safe = text.toLowerCase().replaceAll("[^a-z0-9가-힣_-]+", "-").replaceAll("^-|-$", "");
@@ -91,7 +87,7 @@ public final class PetProfileRepository {
     }
 
     private static double parseScale(String value) {
-        try { return Math.max(0.5, Math.min(2.0, Double.parseDouble(value))); }
+        try { double scale = Double.parseDouble(value); return Double.isFinite(scale) ? Math.max(0.5, Math.min(2.0, scale)) : 1; }
         catch (NumberFormatException ex) { return 1.0; }
     }
 

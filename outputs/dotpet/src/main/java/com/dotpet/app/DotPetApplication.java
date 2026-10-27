@@ -44,7 +44,6 @@ public final class DotPetApplication extends Application {
         DesktopPetController controller = new DesktopPetController(stage, canvas, pet, movement, renderer);
 
         stage.setOnHidden(event -> controller.stop());
-        stage.show();
         controller.start();
     }
 }

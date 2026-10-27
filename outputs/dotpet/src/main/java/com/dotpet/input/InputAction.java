@@ -8,6 +8,8 @@ public enum InputAction {
     COPY_FILE_PATH("파일 선택 후 경로 복사"),
     COPY_TEXT("등록 문구 복사"),
     PASTE_TEXT("등록 문구 붙여넣기"),
+    PASTE_CLIPBOARD("붙여넣기"),
+    PASTE_CLIPBOARD_ENTER("붙여넣고 Enter"),
     START_AUTO_CLICK("오토 클릭 시작"),
     STOP_AUTO_CLICK("긴급 중지"),
     TOGGLE_MOVEMENT("펫 자동 이동 켜기/끄기"),
