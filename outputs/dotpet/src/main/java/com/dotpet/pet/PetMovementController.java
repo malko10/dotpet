@@ -11,7 +11,7 @@ public final class PetMovementController {
     private static final double MAX_FALL_SPEED = 1_500;
     private static final double MIN_THROW_SPEED = 220;
     private static final double MAX_THROW_SPEED = 1_700;
-    private static final double MIN_LANDING_REACTION_SPEED = 180;
+    private static final double KNOCKDOWN_HEIGHT_FRACTION = 0.5;
     private static final double MIN_WALL_REACTION_SPEED = 80;
     private static final double WALK_MIN_SECONDS = 2.2;
     private static final double WALK_MAX_SECONDS = 5.0;
@@ -37,11 +37,13 @@ public final class PetMovementController {
     private boolean interactionPaused;
     private PetState reactionState;
     private double reactionSecondsRemaining;
+    private double highestAirborneFootY;
 
     public PetMovementController(Pet pet, Rectangle2D screenBounds) {
         this.pet = pet;
         this.screenBounds = screenBounds;
         pet.moveToClamped(pet.getX(), getGroundY(), screenBounds);
+        highestAirborneFootY = screenBounds.getMaxY();
         scheduleIdle(System.nanoTime());
     }
 
@@ -55,6 +57,13 @@ public final class PetMovementController {
 
     public boolean isGravityRemoved() {
         return gravityRemoved;
+    }
+
+    /** Recovery progress follows the physics clock, including menu pauses. */
+    public double getLandingProgress() {
+        if (reactionState != PetState.LANDING) return 0;
+        double duration = PetState.LANDING.getReactionDurationNanos() / (double) NANOS_PER_SECOND;
+        return Math.max(0, Math.min(1, 1 - reactionSecondsRemaining / duration));
     }
 
     public void update(long now) {
@@ -72,6 +81,7 @@ public final class PetMovementController {
         }
         if (advanceReaction(elapsedSeconds, now)) return;
         if (airborne || pet.getY() < getGroundY() - 0.5) {
+            if (!airborne) highestAirborneFootY = pet.getY() + pet.getSize();
             airborne = true;
             updateProjectile(elapsedSeconds, now);
             return;
@@ -109,6 +119,7 @@ public final class PetMovementController {
     public void setGravityRemoved(boolean removed) {
         clearReaction();
         gravityRemoved = removed;
+        highestAirborneFootY = pet.getY() + pet.getSize();
         airborne = false;
         velocityX = 0;
         velocityY = 0;
@@ -131,6 +142,7 @@ public final class PetMovementController {
     public void beginDrag() {
         clearReaction();
         dragging = true;
+        highestAirborneFootY = pet.getY() + pet.getSize();
         airborne = false;
         velocityX = 0;
         velocityY = 0;
@@ -141,6 +153,7 @@ public final class PetMovementController {
         clearReaction();
         dragging = false;
         lastUpdate = 0;
+        highestAirborneFootY = pet.getY() + pet.getSize();
         if (gravityRemoved) {
             pet.setState(PetState.IDLE);
             return;
@@ -208,6 +221,7 @@ public final class PetMovementController {
     }
 
     private void updateProjectile(double elapsedSeconds, long now) {
+        highestAirborneFootY = Math.min(highestAirborneFootY, pet.getY() + pet.getSize());
         pet.setState(reactionState == PetState.WALL_HIT ? PetState.WALL_HIT : PetState.FALLING);
         velocityY = Math.min(MAX_FALL_SPEED, velocityY + GRAVITY * elapsedSeconds);
 
@@ -237,14 +251,15 @@ public final class PetMovementController {
             velocityY = Math.abs(velocityY) * 0.25;
         }
 
-        if (nextY >= getGroundY()) {
-            double landingSpeed = velocityY;
+        highestAirborneFootY = Math.min(highestAirborneFootY, nextY + pet.getSize());
+        if (nextY >= getGroundY() && velocityY >= 0) {
+            double dropHeight = screenBounds.getMaxY() - highestAirborneFootY;
             pet.moveToClamped(nextX, getGroundY(), screenBounds);
             velocityX = 0;
             velocityY = 0;
             airborne = false;
             clearReaction();
-            if (landingSpeed >= MIN_LANDING_REACTION_SPEED) startReaction(PetState.LANDING);
+            if (dropHeight >= screenBounds.getHeight() * KNOCKDOWN_HEIGHT_FRACTION) startReaction(PetState.LANDING);
             else {
                 pet.setState(PetState.IDLE);
                 if (pet.isMovementEnabled()) scheduleIdle(now);

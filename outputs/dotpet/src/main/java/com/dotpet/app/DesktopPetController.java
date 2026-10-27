@@ -11,6 +11,7 @@ import com.dotpet.pet.PetMovementController;
 import com.dotpet.pet.PetRenderer;
 import com.dotpet.pet.PetSpeechController;
 import com.dotpet.pet.PetState;
+import com.dotpet.pet.PetAngerController;
 import com.dotpet.actions.QuickActionsWindow;
 import com.dotpet.actions.QuickActionService;
 import com.dotpet.input.InputAction;
@@ -66,6 +67,8 @@ final class DesktopPetController {
     private final DesktopStatusView statusView;
     private final PetSpeechController speech = new PetSpeechController(System.nanoTime());
     private final PetSpeechBubble speechBubble;
+    private final PetAngerController anger = new PetAngerController();
+    private final PetAngerEffect angerEffect;
     private volatile InputSettings inputSettings;
     private volatile String inputNotice = "";
     private Stage featureStage;
@@ -97,6 +100,7 @@ final class DesktopPetController {
         this.quickActions = new QuickActionService(inputService, () -> inputSettings, this::applyInputSettings);
         this.statusView = new DesktopStatusView(stage, pet, movement.getScreenBounds());
         this.speechBubble = new PetSpeechBubble(stage, pet, movement.getScreenBounds());
+        this.angerEffect = new PetAngerEffect(stage, pet, movement.getScreenBounds());
         quickActions.statusProperty().addListener((observable, previous, value) -> showActionStatus());
         quickActions.autoActiveProperty().addListener((observable, previous, value) -> showActionStatus());
         this.timer = new AnimationTimer() {
@@ -107,6 +111,7 @@ final class DesktopPetController {
                 renderer.render(pet, now);
                 statusView.reposition();
                 updateSpeech(now);
+                updateAngerEffect();
             }
         };
         this.radialMenu = new RadialMenu(this::updateMenuPause, this::openFeatureWindow);
@@ -168,6 +173,7 @@ final class DesktopPetController {
         settingsExecutor.shutdownNow();
         statusView.close();
         speechBubble.close();
+        angerEffect.close();
     }
 
     private void handleMousePressed(MouseEvent event) {
@@ -176,6 +182,7 @@ final class DesktopPetController {
         }
         primaryPressed = true;
         speechBubble.hide();
+        angerEffect.hide();
         dragging = false;
         pressScreenX = event.getScreenX();
         pressScreenY = event.getScreenY();
@@ -300,12 +307,14 @@ final class DesktopPetController {
 
     private void updateMenuPause(boolean ignored) {
         speechBubble.hide();
+        angerEffect.hide();
         movement.setInteractionPaused(radialMenu.isShowing() || contextMenu.isShowing()
                 || (featureStage != null && featureStage.isShowing()));
     }
 
     private void openFeatureWindow(RadialMenuAction action) {
         speechBubble.hide();
+        angerEffect.hide();
         if (featureStage != null && featureStage.isShowing()) {
             featureStage.toFront();
             quickActions.report("열려 있는 창을 먼저 사용하거나 닫아 주세요.");
@@ -424,6 +433,12 @@ final class DesktopPetController {
                 || pet.getState() == PetState.FALLING || pet.getState() == PetState.WALL_HIT
                 || pet.getState() == PetState.LANDING || pet.getState() == PetState.SLEEPING;
         speechBubble.update(speech.update(now, busy));
+    }
+
+    private void updateAngerEffect() {
+        boolean blocked = closing || primaryPressed || dragging || radialMenu.isShowing() || contextMenu.isShowing()
+                || (featureStage != null && featureStage.isShowing()) || quickActions.isBusy() || statusView.isShowing();
+        angerEffect.update(anger.update(pet.getState(), movement.getLandingProgress(), blocked), renderer.getSpriteBounds());
     }
 
     private static String failureMessage(Throwable failure) {

@@ -1,7 +1,7 @@
 param(
     [string] $JavaHome = $env:JAVA_HOME,
-    [string] $Destination = (Join-Path $PSScriptRoot '..\DoTPet-Windows-v0.3'),
-    [string] $AppVersion = '0.3.0'
+    [string] $Destination = (Join-Path $PSScriptRoot '..\DoTPet-Windows-v0.3.1'),
+    [string] $AppVersion = '0.3.1'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -82,6 +82,8 @@ DoT Pet 실행 방법
 좌클릭: 빠른 작업 / 키 설정 / 꾸미기 / 설정
 우클릭: 멈추기 / 공중 고정 / 종료
 마우스 드래그: 펫 이동 및 던지기
+화면 높이의 절반 정도 이상에서 떨어지면 넘어졌다 일어납니다.
+일어날 때 가끔 머리 위에 붉은 화남 표시가 나타납니다.
 
 전역 단축키/휠 드래그: 좌클릭 → 키 설정에서 직접 켜고 저장하세요.
 오토 클릭 긴급 중지: 기본 F8 (키 설정에서 변경 가능)

@@ -7,6 +7,7 @@ import java.util.ArrayList;
 import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
+import javafx.geometry.Rectangle2D;
 import javafx.scene.canvas.Canvas;
 import javafx.scene.canvas.GraphicsContext;
 import javafx.scene.paint.Color;
@@ -44,6 +45,7 @@ public final class PetRenderer {
     private boolean customAppearanceApplied;
     private PetState renderedState;
     private long stateStartedAt;
+    private Rectangle2D spriteBounds = Rectangle2D.EMPTY;
 
     public PetRenderer(Canvas canvas) {
         this.canvas = canvas;
@@ -98,6 +100,9 @@ public final class PetRenderer {
         this.horizontalFlip = horizontalFlip;
     }
 
+    /** Actual visible pixels in canvas coordinates, including custom artwork and reflection. */
+    public Rectangle2D getSpriteBounds() { return spriteBounds; }
+
     private static Map<PetState, Animation> editableCopies(Map<PetState, Animation> sourceAnimations) {
         EnumMap<PetState, Animation> result = new EnumMap<>(PetState.class);
         for (PetState state : List.of(PetState.IDLE, PetState.WALKING, PetState.RUNNING, PetState.SLEEPING)) {
@@ -147,12 +152,15 @@ public final class PetRenderer {
         }
         graphics.translate(offsetX, offsetY);
 
+        int minX = frame.getWidth(), minY = frame.getHeight(), maxX = -1, maxY = -1;
         for (int y = 0; y < frame.getHeight(); y++) {
             for (int x = 0; x < frame.getWidth(); x++) {
                 int argb = frame.getPixel(x, y);
                 if ((argb >>> 24) == 0) {
                     continue;
                 }
+                minX = Math.min(minX, x); minY = Math.min(minY, y);
+                maxX = Math.max(maxX, x); maxY = Math.max(maxY, y);
                 graphics.setFill(toColor(argb));
                 double left = Math.round(x * pixelScale);
                 double top = Math.round(y * pixelScale);
@@ -162,6 +170,13 @@ public final class PetRenderer {
             }
         }
         graphics.restore();
+        if (maxX < minX || tintColor.getOpacity() == 0) spriteBounds = Rectangle2D.EMPTY;
+        else {
+            double left = Math.round(minX * pixelScale), right = Math.round((maxX + 1) * pixelScale);
+            double top = Math.round(minY * pixelScale), bottom = Math.round((maxY + 1) * pixelScale);
+            double x = pet.isFacingRight() ^ horizontalFlip ? canvas.getWidth() - offsetX - right : offsetX + left;
+            spriteBounds = new Rectangle2D(x, offsetY + top, right - left, bottom - top);
+        }
     }
 
     private static Map<PetState, Animation> createDefaultAnimations() {
