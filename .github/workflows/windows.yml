@@ -1,0 +1,72 @@
+name: Windows build and release
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: pwsh
+        working-directory: outputs/dotpet
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Build with Gradle
+        run: |
+          .\gradlew.bat build --no-daemon
+          if ($LASTEXITCODE -ne 0) { throw 'Gradle build failed.' }
+      - name: Create portable Windows app
+        run: |
+          .\package-windows.ps1 -JavaHome $env:JAVA_HOME -Destination ..\DoTPet-Windows
+          if ($LASTEXITCODE -ne 0) { throw 'Windows packaging failed.' }
+          Compress-Archive -LiteralPath ..\DoTPet-Windows -DestinationPath ..\DoTPet-Windows.zip
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: DoTPet-Windows
+          path: outputs/DoTPet-Windows.zip
+          if-no-files-found: error
+          retention-days: 14
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: DoTPet-Windows
+          path: release-assets
+      - name: Publish versioned Windows ZIP
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          gh release view $env:RELEASE_TAG --repo $env:GH_REPO 2>$null
+          if ($LASTEXITCODE -ne 0) {
+            gh release create $env:RELEASE_TAG --repo $env:GH_REPO --verify-tag --title "DoT Pet $env:RELEASE_TAG" --notes 'Extract the entire Windows ZIP and run DoTPet.exe. Java is included.'
+            if ($LASTEXITCODE -ne 0) { throw 'Release creation failed.' }
+          }
+          gh release upload $env:RELEASE_TAG release-assets/DoTPet-Windows.zip --repo $env:GH_REPO --clobber
+          if ($LASTEXITCODE -ne 0) { throw 'Release upload failed.' }

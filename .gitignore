@@ -1,0 +1,23 @@
+# Generated builds, packaged Java runtimes, test output and machine-local state.
+/work/
+/outputs/*
+!/outputs/dotpet/
+/outputs/dotpet/build/
+/outputs/dotpet/.gradle/
+/outputs/dotpet/libs/
+**/.idea/
+**/.vscode/
+*.iml
+*.class
+*.log
+*.tmp
+.DS_Store
+Thumbs.db
+.env
+.env.*
+*.pem
+*.pfx
+*.key
+
+# Gradle's small wrapper JAR is source infrastructure and must be tracked.
+!outputs/dotpet/gradle/wrapper/gradle-wrapper.jar

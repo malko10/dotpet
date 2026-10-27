@@ -1,0 +1,28 @@
+.root {
+    -fx-font-family: "Segoe UI";
+    -fx-font-size: 12px;
+}
+.titled-pane > .title {
+    -fx-background-color: #202d3e;
+    -fx-background-radius: 6;
+    -fx-padding: 10 12;
+}
+.titled-pane > .title > .text {
+    -fx-fill: #d6dfeb;
+}
+.titled-pane > .title > .arrow-button .arrow {
+    -fx-background-color: #9ae66e;
+}
+.titled-pane > .content {
+    -fx-background-color: #182230;
+    -fx-border-color: #2c3b4f;
+    -fx-padding: 10;
+}
+.scroll-pane > .viewport {
+    -fx-background-color: #202a39;
+}
+.tooltip {
+    -fx-background-color: #26364d;
+    -fx-text-fill: #f3f6fc;
+    -fx-font-size: 12px;
+}
