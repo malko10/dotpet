@@ -80,9 +80,14 @@ public final class QuickActionService implements AutoCloseable {
     }
 
     public CompletableFuture<Void> updatePreferences(String text, int interval, int count, boolean repeatForever) {
+        return updatePreferences(text, interval, count, repeatForever, preferences.get().pasteTextEnter());
+    }
+
+    public CompletableFuture<Void> updatePreferences(String text, int interval, int count, boolean repeatForever, boolean textEnter) {
         try {
             InputSettings current = preferences.get();
-            InputSettings next = current.withQuickPreferences(text, interval, count, repeatForever);
+            InputSettings next = current.withQuickPreferences(text, interval, count, repeatForever)
+                    .withPasteOptions(textEnter, current.pasteClipboardEnter());
             return next.equals(current) ? CompletableFuture.completedFuture(null) : savePreferences.apply(next);
         }
         catch (RuntimeException error) { return CompletableFuture.failedFuture(error); }
@@ -110,7 +115,7 @@ public final class QuickActionService implements AutoCloseable {
     public void copyBrowserUrl(int preparationSeconds) {
         long run = begin(); if (run < 0) return;
         afterCountdown(run, preparationSeconds, "복사할 브라우저를 선택하세요", () -> runWorker(run, () -> {
-            new BrowserUrlAction().copyFromFocusedBrowser();
+            runKeyboard(() -> new BrowserUrlAction().copyFromFocusedBrowser());
             onFx(() -> {
                 if (generation.get() != run || closed) return;
                 String value = clipboard.readText();
@@ -122,14 +127,18 @@ public final class QuickActionService implements AutoCloseable {
     }
 
     public void pasteText(int preparationSeconds) {
-        String text = preferences.get().savedText();
+        InputSettings settings = preferences.get();
+        String text = settings.savedText();
         if (text.isBlank()) { report("먼저 빠른 작업에서 붙여넣을 문구를 입력하고 저장하세요."); return; }
         long run = begin(); if (run < 0) return;
         try { clipboard.copyText(text); }
         catch (RuntimeException error) { failed(run, error); return; }
         afterCountdown(run, preparationSeconds, "붙여넣을 프로그램을 선택하세요", () -> runWorker(run, () -> {
-            new TextPasteAction().pasteClipboardText();
-            if (generation.get() == run) { report("등록 문구를 붙여넣었어요."); finish(run); }
+            runKeyboard(() -> new TextPasteAction().pasteClipboardText(settings.pasteTextEnter()));
+            if (generation.get() == run) {
+                report(settings.pasteTextEnter() ? "등록 문구를 붙여넣고 Enter를 입력했어요." : "등록 문구를 붙여넣었어요.");
+                finish(run);
+            }
         }));
     }
 
@@ -158,12 +167,24 @@ public final class QuickActionService implements AutoCloseable {
     }
 
     /** Uses the existing clipboard as-is; never reads, replaces or persists its contents. */
-    public void pasteClipboard(boolean pressEnter) {
+    public void pasteClipboard() {
+        boolean pressEnter = preferences.get().pasteClipboardEnter();
         long run = begin(); if (run < 0) return;
         runWorker(run, () -> {
-            new TextPasteAction().pasteClipboardText(pressEnter);
+            runKeyboard(() -> new TextPasteAction().pasteClipboardText(pressEnter));
             if (generation.get() == run) {
                 report(pressEnter ? "붙여넣고 Enter를 입력했어요." : "클립보드 내용을 붙여넣었어요.");
+                finish(run);
+            }
+        });
+    }
+
+    public void selectAll(boolean copy) {
+        long run = begin(); if (run < 0) return;
+        runWorker(run, () -> {
+            runKeyboard(() -> new SelectionAction().execute(copy));
+            if (generation.get() == run) {
+                report(copy ? "전체 선택 후 복사 명령을 보냈어요." : "전체 선택 명령을 보냈어요.");
                 finish(run);
             }
         });
@@ -223,6 +244,15 @@ public final class QuickActionService implements AutoCloseable {
     }
 
     @FunctionalInterface private interface Operation { void run() throws Exception; }
+    private void runKeyboard(Operation operation) throws Exception {
+        try {
+            input.pauseForKeyboardAutomation(true).get(3, TimeUnit.SECONDS);
+            operation.run();
+        } finally {
+            input.pauseForKeyboardAutomation(false).get(3, TimeUnit.SECONDS);
+        }
+    }
+
     private void runWorker(long run, Operation operation) {
         task = worker.submit(() -> {
             try { if (generation.get() == run && !closed) operation.run(); }

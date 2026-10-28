@@ -42,7 +42,7 @@ public final class SettingsService {
         }
     }
 
-    private static InputSettings parseInput(Properties values) {
+    private InputSettings parseInput(Properties values) {
         InputSettings defaults = InputSettings.defaults();
         EnumMap<InputAction, Hotkey> hotkeys = new EnumMap<>(InputAction.class);
         for (InputAction action : InputAction.values()) {
@@ -52,12 +52,25 @@ public final class SettingsService {
             else if (!encoded.isBlank()) hotkeys.put(action, Hotkey.decode(encoded));
         }
         EnumMap<GestureDirection, InputAction> gestures = new EnumMap<>(GestureDirection.class);
-        for (GestureDirection direction : GestureDirection.values()) gestures.put(direction,
-                InputAction.valueOf(values.getProperty("gesture." + direction.name(), defaults.gestures().get(direction).name())));
+        boolean legacyEnter = !values.getProperty("hotkey.PASTE_CLIPBOARD_ENTER", "").isBlank();
+        boolean plainPaste = hotkeys.containsKey(InputAction.PASTE_CLIPBOARD);
+        for (GestureDirection direction : GestureDirection.values()) {
+            String action = values.getProperty("gesture." + direction.name(), defaults.gestures().get(direction).name());
+            plainPaste |= action.equals("PASTE_CLIPBOARD");
+            if (action.equals("PASTE_CLIPBOARD_ENTER")) { legacyEnter = true; action = "PASTE_CLIPBOARD"; }
+            gestures.put(direction, InputAction.valueOf(action));
+        }
+        if (legacyEnter) {
+            String oldKey = values.getProperty("hotkey.PASTE_CLIPBOARD_ENTER", "");
+            if (!hotkeys.containsKey(InputAction.PASTE_CLIPBOARD) && !oldKey.isBlank())
+                hotkeys.put(InputAction.PASTE_CLIPBOARD, Hotkey.decode(oldKey));
+            loadNotice = "이전 ‘붙여넣고 Enter’를 ‘붙여넣기’에 통합했어요. 키 설정에서 단축키와 Enter 체크를 확인하세요.";
+        }
         return new InputSettings(flag(values, "hotkeysEnabled", false), flag(values, "gesturesEnabled", false), hotkeys, gestures,
                 Integer.parseInt(values.getProperty("gestureThreshold", "70")), values.getProperty("savedText", ""),
                 Integer.parseInt(values.getProperty("clickIntervalMillis", "1000")), Integer.parseInt(values.getProperty("clickCount", "10")),
-                flag(values, "infiniteClick", false));
+                flag(values, "infiniteClick", false), flag(values, "pasteTextEnter", false),
+                flag(values, "pasteClipboardEnter", legacyEnter && !plainPaste));
     }
 
     public synchronized void saveInputSettings(InputSettings settings) throws IOException {
@@ -69,6 +82,8 @@ public final class SettingsService {
         values.setProperty("clickIntervalMillis", String.valueOf(settings.clickIntervalMillis()));
         values.setProperty("clickCount", String.valueOf(settings.clickCount()));
         values.setProperty("infiniteClick", String.valueOf(settings.infiniteClick()));
+        values.setProperty("pasteTextEnter", String.valueOf(settings.pasteTextEnter()));
+        values.setProperty("pasteClipboardEnter", String.valueOf(settings.pasteClipboardEnter()));
         for (InputAction action : InputAction.values()) if (action != InputAction.NONE)
             values.setProperty("hotkey." + action.name(), settings.hotkeys().containsKey(action) ? settings.hotkeys().get(action).encode() : "");
         for (GestureDirection direction : GestureDirection.values()) values.setProperty("gesture." + direction.name(),

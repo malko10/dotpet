@@ -424,8 +424,9 @@ final class DesktopPetController {
                 case COPY_BROWSER_URL -> quickActions.copyBrowserUrl(0);
                 case COPY_TEXT -> quickActions.copyText();
                 case PASTE_TEXT -> quickActions.pasteText(0);
-                case PASTE_CLIPBOARD -> quickActions.pasteClipboard(false);
-                case PASTE_CLIPBOARD_ENTER -> quickActions.pasteClipboard(true);
+                case PASTE_CLIPBOARD -> quickActions.pasteClipboard();
+                case SELECT_ALL -> quickActions.selectAll(false);
+                case COPY_ALL -> quickActions.selectAll(true);
                 case START_AUTO_CLICK -> quickActions.startAutoClick();
                 case COPY_FILE_PATH -> {
                     movement.setInteractionPaused(true);

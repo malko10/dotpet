@@ -8,6 +8,7 @@ import javafx.scene.Scene;
 import javafx.scene.control.Button;
 import javafx.scene.control.CheckBox;
 import javafx.scene.control.Label;
+import javafx.scene.control.ScrollPane;
 import javafx.scene.control.Spinner;
 import javafx.scene.control.TextArea;
 import javafx.scene.layout.HBox;
@@ -48,6 +49,10 @@ public final class QuickActionsWindow implements AutoCloseable {
         file.setOnAction(event -> service.copyFilePath(stage));
 
         TextArea text = new TextArea(settings.savedText());
+        CheckBox pasteEnter = new CheckBox("붙여넣은 뒤 Enter 누르기");
+        pasteEnter.setId("quick-paste-enter");
+        pasteEnter.setSelected(settings.pasteTextEnter());
+        pasteEnter.setStyle("-fx-text-fill: #C5D0E0;");
         text.setPromptText("자주 사용하는 문구");
         text.setWrapText(true);
         text.setPrefRowCount(2);
@@ -63,17 +68,17 @@ public final class QuickActionsWindow implements AutoCloseable {
         infinite.setStyle("-fx-text-fill: #F4D6A1;");
 
         Button copy = button("문구 복사");
-        copy.setOnAction(event -> saveThen(text, interval, count, infinite, service::copyText));
+        copy.setOnAction(event -> saveThen(text, interval, count, infinite, pasteEnter, service::copyText));
         Button paste = button("붙여넣기 · 3초 준비");
-        paste.setOnAction(event -> saveThen(text, interval, count, infinite, () -> {
+        paste.setOnAction(event -> saveThen(text, interval, count, infinite, pasteEnter, () -> {
             stage.setAlwaysOnTop(false); service.pasteText(3);
         }));
         Button save = button("문구·클릭 설정 저장");
         save.setId("quick-save");
-        save.setOnAction(event -> saveThen(text, interval, count, infinite, () -> service.report("문구와 클릭 설정을 저장했어요.")));
+        save.setOnAction(event -> saveThen(text, interval, count, infinite, pasteEnter, () -> service.report("문구와 클릭 설정을 저장했어요.")));
         Button start = button("오토 클릭 시작 · 3초 준비");
         start.setId("auto-start");
-        start.setOnAction(event -> saveThen(text, interval, count, infinite, () -> {
+        start.setOnAction(event -> saveThen(text, interval, count, infinite, pasteEnter, () -> {
             stage.setAlwaysOnTop(false); service.startAutoClick();
         }));
         Button stop = button("■ 긴급 중지");
@@ -90,19 +95,23 @@ public final class QuickActionsWindow implements AutoCloseable {
         count.setId("auto-count"); interval.setId("auto-interval");
         count.disableProperty().bind(service.busyProperty().or(infinite.selectedProperty()));
         infinite.disableProperty().bind(service.busyProperty());
+        pasteEnter.disableProperty().bind(service.busyProperty());
         Label status = label("");
         status.setWrapText(true);
         status.setMinHeight(42);
         status.textProperty().bind(service.statusProperty());
         VBox content = new VBox(12, title, help,
                 section("주소·파일", browser, file),
-                section("등록 문구", text, new HBox(8, copy, paste)),
+                section("등록 문구", text, new HBox(8, copy, paste), pasteEnter),
                 section("오토 클릭", new HBox(10, new VBox(4, label("간격 (ms)"), interval),
                         new VBox(4, label("횟수"), count)), infinite, new HBox(8, start, stop), emergency),
                 save, status);
         content.setPadding(new Insets(20));
         content.setStyle("-fx-background-color: #1A2233;");
-        stage.setScene(new Scene(content, 470, 740, Color.web("#1A2233")));
+        ScrollPane scroll = new ScrollPane(content);
+        scroll.setFitToWidth(true);
+        scroll.setStyle("-fx-background: #1A2233; -fx-background-color: #1A2233;");
+        stage.setScene(new Scene(scroll, 490, 760, Color.web("#1A2233")));
         stage.setOnHidden(event -> {
             close();
             if (onHidden != null) onHidden.run();
@@ -112,12 +121,12 @@ public final class QuickActionsWindow implements AutoCloseable {
     public Stage getStage() { return stage; }
     public void show() { stage.show(); stage.toFront(); }
 
-    private void saveThen(TextArea text, Spinner<Integer> interval, Spinner<Integer> count, CheckBox infinite, Runnable action) {
+    private void saveThen(TextArea text, Spinner<Integer> interval, Spinner<Integer> count, CheckBox infinite, CheckBox pasteEnter, Runnable action) {
         CompletableFuture<Void> saving;
         try {
             int milliseconds = Integer.parseInt(interval.getEditor().getText().trim());
             int clicks = infinite.isSelected() ? count.getValue() : Integer.parseInt(count.getEditor().getText().trim());
-            saving = service.updatePreferences(text.getText(), milliseconds, clicks, infinite.isSelected());
+            saving = service.updatePreferences(text.getText(), milliseconds, clicks, infinite.isSelected(), pasteEnter.isSelected());
         } catch (RuntimeException error) {
             service.report("설정값을 확인하세요: " + error.getMessage());
             return;

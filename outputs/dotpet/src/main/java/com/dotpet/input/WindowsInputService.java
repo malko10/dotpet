@@ -34,6 +34,7 @@ public final class WindowsInputService implements AutoCloseable {
     private volatile boolean emergencyArmed;
     private volatile boolean petDragging;
     private volatile boolean suspended;
+    private volatile boolean keyboardAutomation;
     private volatile boolean closed;
     private volatile int threadId;
     private Thread thread;
@@ -67,6 +68,20 @@ public final class WindowsInputService implements AutoCloseable {
         });
     }
     public InputSettings getCurrentSettings() { return current; }
+
+    /** Unregister shortcuts while sending their underlying editing keys to the target application. */
+    public CompletableFuture<Void> pauseForKeyboardAutomation(boolean paused) {
+        return submit(() -> {
+            keyboardAutomation = paused;
+            if (paused || suspended) {
+                EnumMap<InputAction, Hotkey> desired = new EnumMap<>(InputAction.class);
+                if (emergencyArmed) desired.put(InputAction.STOP_AUTO_CLICK, current.hotkeys().get(InputAction.STOP_AUTO_CLICK));
+                hotkeys.apply(desired);
+                gestures.cancel();
+            } else applyConfiguration(current, emergencyArmed);
+            return null;
+        });
+    }
     public boolean isEmergencyArmed() { return emergencyArmed; }
 
     public CompletableFuture<Void> configure(InputSettings settings) {
@@ -141,7 +156,7 @@ public final class WindowsInputService implements AutoCloseable {
         try {
             if (settings.gesturesEnabled() && mouseHook == null) { installMouseHook(); installed = true; }
             EnumMap<InputAction, Hotkey> desired = new EnumMap<>(InputAction.class);
-            if (settings.hotkeysEnabled()) desired.putAll(settings.hotkeys());
+            if (settings.hotkeysEnabled() && !keyboardAutomation) desired.putAll(settings.hotkeys());
             if (armEmergency) desired.put(InputAction.STOP_AUTO_CLICK, settings.hotkeys().get(InputAction.STOP_AUTO_CLICK));
             hotkeys.apply(desired);
             gestures.configure(settings.gesturesEnabled(), settings.gestureThreshold(), settings.gestures());
@@ -161,7 +176,7 @@ public final class WindowsInputService implements AutoCloseable {
             try {
                 if (code >= 0) {
                     int event = message.intValue();
-                    boolean blocked = suspended || petDragging || leftPressed;
+                    boolean blocked = suspended || keyboardAutomation || petDragging || leftPressed;
                     long now = System.nanoTime();
                     if (event == 0x0201) { leftPressed = true; gestures.cancel(); }
                     else if (event == 0x0202) leftPressed = false;
@@ -186,7 +201,7 @@ public final class WindowsInputService implements AutoCloseable {
     }
 
     private void dispatch(InputAction action) {
-        if (closed || action == InputAction.NONE || (suspended && action != InputAction.STOP_AUTO_CLICK)) return;
+        if (closed || action == InputAction.NONE || ((suspended || keyboardAutomation) && action != InputAction.STOP_AUTO_CLICK)) return;
         try { actionHandler.accept(action); } catch (RuntimeException failure) { report("입력 동작 오류: " + failure.getMessage()); }
     }
 

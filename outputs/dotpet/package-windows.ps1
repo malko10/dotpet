@@ -1,7 +1,7 @@
 param(
     [string] $JavaHome = $env:JAVA_HOME,
-    [string] $Destination = (Join-Path $PSScriptRoot '..\DoTPet-Windows-v0.4.2'),
-    [string] $AppVersion = '0.4.2'
+    [string] $Destination = (Join-Path $PSScriptRoot '..\DoTPet-Windows-v0.4.3'),
+    [string] $AppVersion = '0.4.3'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -89,7 +89,8 @@ DoT Pet 실행 방법
 
 전역 단축키/휠 드래그: 좌클릭 → 키 설정에서 직접 켜고 저장하세요.
 오토 클릭 긴급 중지: 기본 F8 (키 설정에서 변경 가능)
-붙여넣기 / 붙여넣고 Enter: 키 설정에서 원하는 단축키나 휠 제스처를 연결하세요.
+붙여넣기 / 등록 문구 붙여넣기: 키 설정에서 기능별로 Enter 체크를 선택하고 단축키나 휠 제스처를 연결하세요.
+전체 선택 / 전체 선택 후 복사도 키 설정에서 연결할 수 있습니다.
 프로그램 설정에서 걷기·중력·수다·항상 위 표시·크기·위치 기억을 바꿀 수 있습니다.
 적용한 캐릭터와 애니메이션, 마지막 위치는 다음 실행에도 복원됩니다.
 픽셀 편집기: 동작·프레임 선택 → 이미지 가져오기로 한 장씩 넣으세요.

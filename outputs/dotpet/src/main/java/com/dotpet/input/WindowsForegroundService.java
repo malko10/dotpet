@@ -35,11 +35,11 @@ public final class WindowsForegroundService {
 
     public long requireExternalWindowHandle() {
         var window = User32.INSTANCE.GetForegroundWindow();
-        if (window == null) throw new IllegalStateException("붙여넣을 대상 창을 선택하세요.");
+        if (window == null) throw new IllegalStateException("작업할 대상 창을 선택하세요.");
         IntByReference processId = new IntByReference();
         User32.INSTANCE.GetWindowThreadProcessId(window, processId);
         if (processId.getValue() == Kernel32.INSTANCE.GetCurrentProcessId())
-            throw new IllegalStateException("붙여넣을 다른 프로그램을 먼저 선택하세요.");
+            throw new IllegalStateException("작업할 다른 프로그램을 먼저 선택하세요.");
         return Pointer.nativeValue(window.getPointer());
     }
 

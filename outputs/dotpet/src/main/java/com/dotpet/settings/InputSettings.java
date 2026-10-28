@@ -11,7 +11,14 @@ import java.util.Map;
 /** Immutable user-selected bindings and quick-action preferences. */
 public record InputSettings(boolean hotkeysEnabled, boolean gesturesEnabled,
         Map<InputAction, Hotkey> hotkeys, Map<GestureDirection, InputAction> gestures,
-        int gestureThreshold, String savedText, int clickIntervalMillis, int clickCount, boolean infiniteClick) {
+        int gestureThreshold, String savedText, int clickIntervalMillis, int clickCount, boolean infiniteClick,
+        boolean pasteTextEnter, boolean pasteClipboardEnter) {
+    public InputSettings(boolean hotkeysEnabled, boolean gesturesEnabled,
+            Map<InputAction, Hotkey> hotkeys, Map<GestureDirection, InputAction> gestures,
+            int gestureThreshold, String savedText, int clickIntervalMillis, int clickCount, boolean infiniteClick) {
+        this(hotkeysEnabled, gesturesEnabled, hotkeys, gestures, gestureThreshold, savedText,
+                clickIntervalMillis, clickCount, infiniteClick, false, false);
+    }
     /** Older settings/callers retain finite repetition. */
     public InputSettings(boolean hotkeysEnabled, boolean gesturesEnabled,
             Map<InputAction, Hotkey> hotkeys, Map<GestureDirection, InputAction> gestures,
@@ -59,6 +66,12 @@ public record InputSettings(boolean hotkeysEnabled, boolean gesturesEnabled,
     }
 
     public InputSettings withQuickPreferences(String text, int interval, int count, boolean repeatForever) {
-        return new InputSettings(hotkeysEnabled, gesturesEnabled, hotkeys, gestures, gestureThreshold, text, interval, count, repeatForever);
+        return new InputSettings(hotkeysEnabled, gesturesEnabled, hotkeys, gestures, gestureThreshold,
+                text, interval, count, repeatForever, pasteTextEnter, pasteClipboardEnter);
+    }
+
+    public InputSettings withPasteOptions(boolean textEnter, boolean clipboardEnter) {
+        return new InputSettings(hotkeysEnabled, gesturesEnabled, hotkeys, gestures, gestureThreshold,
+                savedText, clickIntervalMillis, clickCount, infiniteClick, textEnter, clipboardEnter);
     }
 }

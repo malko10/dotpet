@@ -34,6 +34,7 @@ public final class InputSettingsWindow {
     private final CheckBox gesturesEnabled = new CheckBox("휠 버튼 드래그 제스처 사용");
     private final EnumMap<InputAction, Hotkey> bindings = new EnumMap<>(InputAction.class);
     private final EnumMap<InputAction, TextField> fields = new EnumMap<>(InputAction.class);
+    private final EnumMap<InputAction, CheckBox> pasteOptions = new EnumMap<>(InputAction.class);
     private final EnumMap<GestureDirection, ComboBox<InputAction>> gestureChoices = new EnumMap<>(GestureDirection.class);
     private final Spinner<Integer> threshold = new Spinner<>(32, 200, 70, 10);
     private final Label feedback = label("");
@@ -98,8 +99,17 @@ public final class InputSettingsWindow {
             Button clear = button("지우기"); clear.setDisable(action == InputAction.STOP_AUTO_CLICK);
             clear.setOnAction(event -> clearBinding(action));
             keyGrid.addRow(row++, name, key, clear);
+            if (action == InputAction.PASTE_TEXT || action == InputAction.PASTE_CLIPBOARD) {
+                CheckBox enter = new CheckBox("붙여넣은 뒤 Enter 누르기");
+                enter.setId("paste-enter-" + action.name());
+                enter.setStyle(textStyle());
+                enter.setSelected(action == InputAction.PASTE_TEXT ? initial.pasteTextEnter() : initial.pasteClipboardEnter());
+                enter.setTooltip(new Tooltip("이 기능에 연결한 단축키와 제스처에 함께 적용됩니다."));
+                pasteOptions.put(action, enter);
+                keyGrid.add(enter, 1, row++, 2, 1);
+            }
         }
-        Label keyHelp = label("키 칸 클릭 → 키 조합 누르기. Ctrl+Alt 조합을 권장해요. 긴급 중지는 필수입니다.\n‘붙여넣기’와 ‘붙여넣고 Enter’는 현재 클립보드를 사용합니다. 등록 문구와는 별개예요.\n앱 내부 단축키까지 모두 검사할 수는 없으며, Windows에 등록된 전역 단축키 충돌은 저장 시 안내합니다.");
+        Label keyHelp = label("키 칸 클릭 → 키 조합 누르기. Ctrl+Alt 조합을 권장해요. 긴급 중지는 필수입니다.\n붙여넣기의 Enter 체크는 각 기능별로 저장되며 제스처에도 적용됩니다.\n전체 선택은 Ctrl+A, 전체 선택 후 복사는 Ctrl+A 다음 Ctrl+C를 보냅니다.\n앱 내부 단축키까지 모두 검사할 수는 없으며, Windows 전역 단축키 충돌은 저장 시 안내합니다.");
         keyHelp.setWrapText(true);
 
         GridPane gestureGrid = new GridPane(); gestureGrid.setHgap(10); gestureGrid.setVgap(8);
@@ -132,7 +142,8 @@ public final class InputSettingsWindow {
             InputSettings current = currentSettings.get();
             hotkeysEnabled.setSelected(false); gesturesEnabled.setSelected(false);
             submit(new InputSettings(false, false, current.hotkeys(), current.gestures(), current.gestureThreshold(),
-                    current.savedText(), current.clickIntervalMillis(), current.clickCount(), current.infiniteClick()));
+                    current.savedText(), current.clickIntervalMillis(), current.clickCount(), current.infiniteClick(),
+                    current.pasteTextEnter(), current.pasteClipboardEnter()));
         });
         save.setId("save-input-settings");
         save.setOnAction(event -> submit());
@@ -174,7 +185,8 @@ public final class InputSettingsWindow {
         EnumMap<GestureDirection, InputAction> gestures = new EnumMap<>(GestureDirection.class);
         gestureChoices.forEach((direction, choice) -> gestures.put(direction, choice.getValue()));
         return new InputSettings(hotkeysEnabled.isSelected(), gesturesEnabled.isSelected(), bindings, gestures,
-                threshold.getValue(), current.savedText(), current.clickIntervalMillis(), current.clickCount(), current.infiniteClick());
+                threshold.getValue(), current.savedText(), current.clickIntervalMillis(), current.clickCount(), current.infiniteClick(),
+                pasteOptions.get(InputAction.PASTE_TEXT).isSelected(), pasteOptions.get(InputAction.PASTE_CLIPBOARD).isSelected());
     }
 
     private boolean validate() {
@@ -189,6 +201,7 @@ public final class InputSettingsWindow {
         fields.forEach((action, field) -> field.setText(bindings.containsKey(action) ? bindings.get(action).toString() : "사용 안 함"));
         gestureChoices.forEach((direction, choice) -> choice.setValue(defaults.gestures().get(direction)));
         threshold.getValueFactory().setValue(defaults.gestureThreshold());
+        pasteOptions.values().forEach(option -> option.setSelected(false));
         validate(); feedback.setText("기본 조합으로 되돌렸어요. 저장하면 적용됩니다.");
     }
 
