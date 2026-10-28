@@ -14,7 +14,13 @@ import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.function.Consumer;
+import java.util.concurrent.Callable;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import javafx.animation.AnimationTimer;
+import javafx.application.Platform;
 import javafx.scene.Scene;
 import javafx.scene.canvas.Canvas;
 import javafx.scene.canvas.GraphicsContext;
@@ -77,6 +83,11 @@ public final class PixelEditorWindow {
     private final Runnable onHidden;
     private final Consumer<Map<PetState, Animation>> newProjectHandler;
     private final AnimationTimer previewTimer;
+    private final ExecutorService files = Executors.newSingleThreadExecutor(task -> {
+        Thread thread = new Thread(task, "dotpet-editor-files");
+        thread.setDaemon(true);
+        return thread;
+    });
     private PetAnimationProject bulkUndo;
     private PetAnimationProject bulkRedo;
     private Button pencilButton;
@@ -86,6 +97,8 @@ public final class PixelEditorWindow {
     private boolean eraser;
     private boolean strokeActive;
     private boolean updatingSelectors;
+    private boolean closed;
+    private boolean fileOperationInProgress;
     private int previousX;
     private int previousY;
     private long previewStartedAt;
@@ -117,6 +130,8 @@ public final class PixelEditorWindow {
         this.stage.setMinWidth(860);
         this.stage.setMinHeight(700);
         this.stage.setOnHidden(event -> {
+            closed = true;
+            files.shutdownNow();
             previewTimer.stop();
             onHidden.run();
         });
@@ -140,6 +155,7 @@ public final class PixelEditorWindow {
         dimensions.setPrefWidth(76);
         dimensions.setOnAction(event -> resizeProject());
         statePicker.getItems().setAll(project.getEditableStates());
+        statePicker.setId("animation-state");
         statePicker.setConverter(new StringConverter<>() {
             @Override public String toString(PetState state) { return state == null ? "" : stateLabel(state); }
             @Override public PetState fromString(String value) { return null; }
@@ -161,8 +177,14 @@ public final class PixelEditorWindow {
         Button create = button("새로 만들기");
         create.setId("new-project");
         create.setOnAction(event -> newProject());
-        Button open = button("열기");
+        Button open = button("프로젝트 열기");
+        open.setId("open-project");
+        open.setTooltip(new Tooltip("저장한 .dotpet 파일의 모든 동작과 프레임을 엽니다."));
         open.setOnAction(event -> openProject());
+        Button importImage = button("이미지 가져오기");
+        importImage.setId("import-frame-image");
+        importImage.setTooltip(new Tooltip("동작과 프레임을 먼저 고르세요. PNG·JPG·BMP를 선택한 프레임 하나에만 넣습니다."));
+        importImage.setOnAction(event -> chooseFrameImage());
         Button save = button("저장");
         save.setId("save-project");
         save.setOnAction(event -> saveProject());
@@ -170,7 +192,7 @@ public final class PixelEditorWindow {
         png.setOnAction(event -> exportPng());
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
-        HBox fileTools = new HBox(8, create, open, save, png, spacer, caption("픽셀 크기"), dimensions);
+        HBox fileTools = new HBox(8, create, open, importImage, save, png, spacer, caption("픽셀 크기"), dimensions);
         fileTools.setStyle("-fx-alignment: center-left; -fx-padding: 0 0 14 0;");
         root.setTop(fileTools);
 
@@ -235,7 +257,7 @@ public final class PixelEditorWindow {
         Button stop = iconButton(EditorIcons.Tool.STOP, "미리보기 정지", "preview-stop");
         play.setOnAction(event -> startPreview());
         stop.setOnAction(event -> stopPreview());
-        Label help = caption("새 펫: 그림 그리기 → 적용\n\n같은 그림을 모든 동작에 쓰려면 ‘모든 프레임에 복사’를 누르세요.\n\n걷기·달리기는 왼쪽 한 방향만 그립니다.");
+        Label help = caption("동작·프레임을 고르고 ‘이미지 가져오기’로 한 장씩 넣으세요.\n\n같은 그림을 전체에 쓰려면 ‘모든 프레임에 복사’를 누르세요.\n\n걷기·달리기는 왼쪽 한 방향만 그립니다.");
         help.setWrapText(true);
         help.setStyle("-fx-text-fill: #AEBBD0; -fx-font-size: 12px; -fx-line-spacing: 4;");
         VBox side = new VBox(12, caption("색상"), colorPicker, palette, new Separator(),
@@ -294,6 +316,7 @@ public final class PixelEditorWindow {
         HBox footer = new HBox(10, copyAll, apply);
         footer.setStyle("-fx-alignment: center-right; -fx-padding: 10 0 0 0;");
         status.setStyle("-fx-text-fill: #AEBBD0; -fx-padding: 6 0 0 0;");
+        status.setId("editor-status");
         status.setWrapText(true);
         root.setBottom(new VBox(8, animationPane, footer, status));
         return root;
@@ -414,6 +437,7 @@ public final class PixelEditorWindow {
 
     private void installKeyboardShortcuts() {
         stage.getScene().setOnKeyPressed(event -> {
+            if (fileOperationInProgress) return;
             if (event.getTarget() instanceof TextInputControl) return;
             if (event.isControlDown()) {
                 switch (event.getCode()) {
@@ -715,30 +739,89 @@ public final class PixelEditorWindow {
 
     private void openProject() {
         FileChooser chooser = new FileChooser();
-        chooser.setTitle("DoT Pet 프로젝트 또는 PNG 열기");
-        chooser.getExtensionFilters().addAll(new FileChooser.ExtensionFilter("DoT Pet / PNG", "*.dotpet", "*.png"),
+        chooser.setTitle("DoT Pet 프로젝트 열기 · 모든 동작과 프레임");
+        chooser.getExtensionFilters().addAll(new FileChooser.ExtensionFilter("DoT Pet 프로젝트", "*.dotpet"),
+                new FileChooser.ExtensionFilter("선택 프레임에 이미지 가져오기", "*.png", "*.jpg", "*.jpeg", "*.bmp"),
                 new FileChooser.ExtensionFilter("모든 파일", "*.*"));
         var selected = chooser.showOpenDialog(stage);
-        if (selected == null) return;
-        try {
-            if (selected.getName().toLowerCase().endsWith(".png")) {
-                BufferedImage source = ImageIO.read(selected);
-                if (source == null) throw new IOException("이미지를 읽을 수 없습니다.");
-                int size = source.getWidth();
-                if (source.getWidth() != source.getHeight() || (size != 16 && size != 32 && size != 64))
-                    throw new IOException("16×16, 32×32, 64×64 정사각 PNG만 열 수 있습니다.");
-                Frame frame = new Frame(size, size, source.getRGB(0, 0, size, size, null, 0, size));
-                project = new PetAnimationProject(frame);
-            } else {
-                project = loadProject(selected.toPath());
-            }
+        if (selected != null) openFile(selected.toPath());
+    }
+
+    void openFile(Path path) {
+        if (closed || fileOperationInProgress) return;
+        String name = path.getFileName().toString().toLowerCase(java.util.Locale.ROOT);
+        if (name.endsWith(".png") || name.endsWith(".jpg") || name.endsWith(".jpeg") || name.endsWith(".bmp")) {
+            importFrameImage(path);
+            return;
+        }
+        if (dirty) {
+            ButtonType open = new ButtonType("프로젝트 열기");
+            Alert confirm = new Alert(Alert.AlertType.CONFIRMATION,
+                    "저장하지 않은 편집 내용이 있어요. 필요하면 취소 후 먼저 저장하세요.", open, ButtonType.CANCEL);
+            confirm.setTitle("프로젝트 열기");
+            confirm.setHeaderText("현재 편집 내용 대신 다른 프로젝트를 열까요?");
+            confirm.initOwner(stage);
+            if (confirm.showAndWait().orElse(ButtonType.CANCEL) != open) return;
+        }
+        runFileTask(() -> loadProject(path), loaded -> {
+            stopPreview();
+            project = loaded;
             bulkUndo = null;
             bulkRedo = null;
             dirty = false;
             newProjectMode = project.isEmpty();
             loadSelectedFrame();
-            status.setText("열기 완료: " + selected.getName());
-        } catch (Exception ex) { showError("파일을 열 수 없습니다", ex); }
+            status.setText("프로젝트 열기 완료: " + path.getFileName());
+        }, "프로젝트 읽는 중…", "프로젝트를 열 수 없습니다");
+    }
+
+    private void chooseFrameImage() {
+        FileChooser chooser = new FileChooser();
+        chooser.setTitle(stateLabel(project.getSelectedState()) + " · 프레임 "
+                + (project.getSelectedFrameIndex() + 1) + "에 이미지 가져오기");
+        chooser.getExtensionFilters().addAll(
+                new FileChooser.ExtensionFilter("이미지 (PNG / JPG / BMP)", "*.png", "*.jpg", "*.jpeg", "*.bmp"),
+                new FileChooser.ExtensionFilter("PNG 이미지", "*.png"));
+        var selected = chooser.showOpenDialog(stage);
+        if (selected != null) importFrameImage(selected.toPath());
+    }
+
+    void importFrameImage(Path path) {
+        if (closed || fileOperationInProgress) return;
+        int size = project.getCanvasSize();
+        runFileTask(() -> FrameImageImporter.read(path, size), frame -> {
+            stopPreview();
+            document.beginEdit();
+            for (int y = 0; y < size; y++) {
+                for (int x = 0; x < size; x++) document.paint(x, y, frame.getPixel(x, y));
+            }
+            newProjectMode = false;
+            commitFrameEdit();
+            animationPane.setExpanded(true);
+            refreshFrameStrip();
+            status.setText(stateLabel(project.getSelectedState()) + " · 프레임 "
+                    + (project.getSelectedFrameIndex() + 1) + "에만 가져왔어요: " + path.getFileName()
+                    + " · 다른 크기는 비율을 유지해 맞춥니다. Ctrl+Z로 되돌릴 수 있어요.");
+        }, "이미지 읽는 중…", "이미지를 가져올 수 없습니다");
+    }
+
+    private <T> void runFileTask(Callable<T> task, Consumer<T> success, String busyText, String errorTitle) {
+        fileOperationInProgress = true;
+        stage.getScene().getRoot().setDisable(true);
+        status.setText(busyText);
+        CompletableFuture.supplyAsync(() -> {
+            try { return task.call(); }
+            catch (Exception failure) { throw new CompletionException(failure); }
+        }, files).whenComplete((result, failure) -> Platform.runLater(() -> {
+            if (closed) return;
+            fileOperationInProgress = false;
+            stage.getScene().getRoot().setDisable(false);
+            if (failure != null) {
+                Throwable cause = failure.getCause() == null ? failure : failure.getCause();
+                status.setText("파일을 읽지 못했어요. 편집 중인 프레임은 그대로 유지됩니다.");
+                showError(errorTitle, cause instanceof Exception exception ? exception : new IOException(cause));
+            } else success.accept(result);
+        }));
     }
 
     public static PetAnimationProject readProject(String json) throws IOException {
