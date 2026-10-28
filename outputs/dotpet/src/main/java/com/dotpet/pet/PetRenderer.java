@@ -1,6 +1,7 @@
 package com.dotpet.pet;
 
 import com.dotpet.animation.Animation;
+import com.dotpet.animation.DefaultPetAnimations;
 import com.dotpet.animation.Frame;
 import com.dotpet.animation.PetReactionFrames;
 import java.util.ArrayList;
@@ -14,35 +15,12 @@ import javafx.scene.paint.Color;
 
 /** Renders state-specific animation frames as crisp pixels on a transparent canvas. */
 public final class PetRenderer {
-    private static final String[] REST_FRAME = {
-            "..##....##..",
-            ".#GG#..#GG#.",
-            "#GGGG##GGGG#",
-            "#GGGGGGGGGG#",
-            "#GEEGGGGEEG#",
-            "#GGGGGGGGGG#",
-            "#GGGGGGGGGG#",
-            ".#GGGGGGGG#.",
-            "..#GGSSGG#..",
-            "...#GGGG#...",
-            "..##....##..",
-            "............"
-    };
-
-    private static final Map<Character, Integer> PALETTE = Map.of(
-            '#', 0xFF28384C,
-            'G', 0xFF9AE66E,
-            'S', 0xFF68B957,
-            'E', 0xFF172016,
-            'z', 0xFFB6A2FF);
-
     private final Canvas canvas;
     private final GraphicsContext graphics;
     private final Map<PetState, Animation> animations;
     private final Map<PetState, Animation> builtInAnimations;
     private Color tintColor = Color.WHITE;
     private boolean horizontalFlip;
-    private boolean customAppearanceApplied;
     private PetState renderedState;
     private long stateStartedAt;
     private Rectangle2D spriteBounds = Rectangle2D.EMPTY;
@@ -51,7 +29,7 @@ public final class PetRenderer {
         this.canvas = canvas;
         this.graphics = canvas.getGraphicsContext2D();
         this.graphics.setImageSmoothing(false);
-        this.builtInAnimations = Map.copyOf(createDefaultAnimations());
+        this.builtInAnimations = DefaultPetAnimations.get();
         this.animations = new EnumMap<>(builtInAnimations);
     }
 
@@ -65,7 +43,6 @@ public final class PetRenderer {
         if (editedIdle != null) {
             animations.put(PetState.FALLING, editedIdle);
             animations.putAll(PetReactionFrames.create(editedIdle.getFrame(0)));
-            customAppearanceApplied = true;
         }
         renderedState = null;
     }
@@ -130,9 +107,8 @@ public final class PetRenderer {
             stateStartedAt = now;
         }
 
-        // Falling has no separate editor timeline: always resolve it from the active edited appearance.
-        PetState animationState = pet.getState() == PetState.FALLING && customAppearanceApplied
-                ? PetState.IDLE : pet.getState();
+        // Falling has no separate editor timeline: use the current appearance's idle frames.
+        PetState animationState = pet.getState() == PetState.FALLING ? PetState.IDLE : pet.getState();
         Animation animation = animations.get(animationState);
         long elapsed = Math.max(0, now - stateStartedAt);
         Frame frame = pet.getState().isReaction() ? animation.frameAtClamped(elapsed) : animation.frameAt(elapsed);
@@ -177,65 +153,6 @@ public final class PetRenderer {
             double x = pet.isFacingRight() ^ horizontalFlip ? canvas.getWidth() - offsetX - right : offsetX + left;
             spriteBounds = new Rectangle2D(x, offsetY + top, right - left, bottom - top);
         }
-    }
-
-    private static Map<PetState, Animation> createDefaultAnimations() {
-        EnumMap<PetState, Animation> animations = new EnumMap<>(PetState.class);
-        Frame resting = createFrame(REST_FRAME);
-        animations.put(PetState.IDLE, new Animation(List.of(resting, createBlinkFrame()), 2));
-        animations.put(PetState.WALKING, new Animation(List.of(
-                createFrameWithFeet("..##....##.."),
-                createFrameWithFeet("...##..##..."),
-                createFrameWithFeet(".##......##."),
-                createFrameWithFeet("...##..##...")), 7));
-        animations.put(PetState.RUNNING, new Animation(List.of(
-                createFrameWithFeet("..##....##.."),
-                createFrameWithFeet(".##....##..."),
-                createFrameWithFeet("##......##.."),
-                createFrameWithFeet("...##..##..."),
-                createFrameWithFeet("..##......##"),
-                createFrameWithFeet(".##....##...")), 11));
-        animations.put(PetState.SLEEPING, new Animation(List.of(createSleepFrame(false), createSleepFrame(true)), 2));
-        animations.put(PetState.FALLING, new Animation(List.of(createFrameWithFeet("............")), 1));
-        animations.putAll(PetReactionFrames.create(resting));
-        return Map.copyOf(animations);
-    }
-
-    private static Frame createBlinkFrame() {
-        String[] pixels = REST_FRAME.clone();
-        pixels[4] = "#GSSGGGGSSG#";
-        return createFrame(pixels);
-    }
-
-    private static Frame createSleepFrame(boolean showZ) {
-        String[] pixels = REST_FRAME.clone();
-        pixels[4] = "#GSSGGGGSSG#";
-        if (showZ) {
-            pixels[0] = "..##....##.z";
-        }
-        return createFrame(pixels);
-    }
-
-    private static Frame createFrameWithFeet(String feet) {
-        String[] pixels = REST_FRAME.clone();
-        pixels[10] = feet;
-        return createFrame(pixels);
-    }
-
-    private static Frame createFrame(String[] rows) {
-        int width = rows[0].length();
-        int height = rows.length;
-        List<Integer> values = new ArrayList<>(width * height);
-        for (String row : rows) {
-            if (row.length() != width) {
-                throw new IllegalArgumentException("Pixel frame rows must have a consistent width.");
-            }
-            for (int x = 0; x < width; x++) {
-                values.add(PALETTE.getOrDefault(row.charAt(x), 0));
-            }
-        }
-        int[] pixels = values.stream().mapToInt(Integer::intValue).toArray();
-        return new Frame(width, height, pixels);
     }
 
     private Color toColor(int argb) {

@@ -170,7 +170,8 @@ final class DesktopPetController {
                     if (closing) return;
                     StartupData restored = failure == null ? loaded : new StartupData(InputSettings.defaults(), ProgramSettings.defaults(), null);
                     inputSettings = restored.input();inputNotice = settingsService.getLoadNotice();programSettings = restored.program();
-                    if (restored.profile() != null) applyAppearance(restored.profile());
+                    if (restored.profile() != null)
+                        applyAppearance(restored.profile().resolveBuiltIn(renderer.createBuiltInEditableAnimations()));
                     applyProgramPreferences(programSettings);
                     if (programSettings.rememberPosition() && programSettings.hasPosition()) {
                         movement.beginDrag();pet.moveToClamped(programSettings.x(),programSettings.y(),movement.getScreenBounds());movement.endDrag(0,0);
@@ -369,7 +370,7 @@ final class DesktopPetController {
             return;
         }
         if (action == RadialMenuAction.PET_CUSTOMIZATION) {
-            PetCustomization active = currentCustomization == null ? new PetCustomization("builtin", "기본 캐릭터",
+            PetCustomization active = currentCustomization == null ? PetCustomization.builtIn(
                     renderer.createBuiltInEditableAnimations(),pet.getSize()/DEFAULT_PET_SIZE,false,Color.WHITE) : currentCustomization;
             PetCustomizationWindow window = new PetCustomizationWindow(stage,
                     renderer.createBuiltInEditableAnimations(),active,this::applyCustomization,this::featureClosed);

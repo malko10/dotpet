@@ -1,7 +1,7 @@
 param(
     [string] $JavaHome = $env:JAVA_HOME,
-    [string] $Destination = (Join-Path $PSScriptRoot '..\DoTPet-Windows-v0.4.1'),
-    [string] $AppVersion = '0.4.1'
+    [string] $Destination = (Join-Path $PSScriptRoot '..\DoTPet-Windows-v0.4.2'),
+    [string] $AppVersion = '0.4.2'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -79,6 +79,8 @@ DoT Pet 실행 방법
    DoTPet.exe, app, runtime 폴더는 함께 있어야 합니다.
 
 펫은 작업표시줄 바로 위에 나타납니다.
+기본 캐릭터는 파란 슬라임입니다. 대기·걷기·달리기·잠자기 애니메이션이 포함되어 있습니다.
+다른 캐릭터를 쓰고 있다면 꾸미기 → 기본 슬라임 → 펫에 적용 후 닫기를 누르세요.
 좌클릭: 빠른 작업 / 키 설정 / 꾸미기 / 설정
 우클릭: 멈추기 / 공중 고정 / 종료
 마우스 드래그: 펫 이동 및 던지기

@@ -68,7 +68,8 @@ public final class PetCustomizationWindow {
         stage.setTitle("DoT Pet · 캐릭터 꾸미기");
         this.applyHandler = applyHandler;
         this.onHidden = onHidden;
-        profiles.add(new PetCustomization("builtin", "기본 캐릭터", builtInAnimations, 1, false, Color.WHITE));
+        profiles.add(PetCustomization.builtIn(builtInAnimations, 1, false, Color.WHITE));
+        if(active!=null)active=active.resolveBuiltIn(builtInAnimations);
         if(active!=null){if(active.id().equals("builtin"))profiles.set(0,active);else profiles.add(active);}
         selected = active==null?profiles.getFirst():active;
         stage.setScene(new Scene(createContent(), 720, 510, Color.web("#111824")));
