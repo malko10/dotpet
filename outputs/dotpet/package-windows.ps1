@@ -1,7 +1,7 @@
 param(
     [string] $JavaHome = $env:JAVA_HOME,
-    [string] $Destination = (Join-Path $PSScriptRoot '..\DoTPet-Windows-v0.4.4'),
-    [string] $AppVersion = '0.4.4'
+    [string] $Destination = (Join-Path $PSScriptRoot '..\DoTPet-Windows-v0.5'),
+    [string] $AppVersion = '0.5.0'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -93,6 +93,9 @@ DoT Pet 실행 방법
 전체 선택 / 전체 선택 후 복사도 키 설정에서 연결할 수 있습니다.
 창 전환 (Alt+Tab)도 단축키나 휠 제스처에 연결할 수 있습니다.
 기본 슬라임 색상: 꾸미기 → 기본 슬라임 → 색상 선택 → 펫에 적용 후 닫기
+크기는 25% 단위로 조절하며 펫 외형과 투명 창이 함께 커집니다.
+꾸미기에서 왕관/모자 중 하나와 안대·수염을 함께 착용할 수 있습니다.
+말풍선을 켜두면 시작할 때 컴퓨터 시간에 맞춰 한 번 인사합니다.
 프로그램 설정에서 걷기·중력·수다·항상 위 표시·크기·위치 기억을 바꿀 수 있습니다.
 적용한 캐릭터와 애니메이션, 마지막 위치는 다음 실행에도 복원됩니다.
 픽셀 편집기: 동작·프레임 선택 → 이미지 가져오기로 한 장씩 넣으세요.

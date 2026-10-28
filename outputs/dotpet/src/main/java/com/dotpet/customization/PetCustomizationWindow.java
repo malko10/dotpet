@@ -11,6 +11,10 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.EnumMap;
+import java.util.Set;
+import java.util.stream.Collectors;
+import com.dotpet.pet.PixelSizing;
 import java.util.function.Consumer;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CompletableFuture;
@@ -28,12 +32,14 @@ import javafx.scene.control.ColorPicker;
 import javafx.scene.control.ComboBox;
 import javafx.scene.control.Label;
 import javafx.scene.control.Slider;
+import javafx.scene.control.ScrollPane;
 import javafx.scene.control.TextField;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.FlowPane;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.VBox;
+import javafx.scene.layout.StackPane;
 import javafx.scene.paint.Color;
 import javafx.stage.FileChooser;
 import javafx.stage.Stage;
@@ -51,6 +57,7 @@ public final class PetCustomizationWindow {
     private final Label colorLabel = new Label();
     private final FlowPane colorPresets = new FlowPane(7, 7);
     private final Canvas preview = new Canvas(176, 176);
+    private final EnumMap<PetAccessory, CheckBox> accessoryChoices = new EnumMap<>(PetAccessory.class);
     private final Label status = new Label();
     private final List<PetCustomization> profiles = new ArrayList<>();
     private final Consumer<PetCustomization> applyHandler;
@@ -72,13 +79,15 @@ public final class PetCustomizationWindow {
         stage.setTitle("DoT Pet · 캐릭터 꾸미기");
         this.applyHandler = applyHandler;
         this.onHidden = onHidden;
+        preview.setId("appearance-preview");
         profiles.add(PetCustomization.builtIn(builtInAnimations, 1, false, Color.WHITE));
         if(active!=null)active=active.resolveBuiltIn(builtInAnimations);
         if(active!=null){if(active.id().equals("builtin"))profiles.set(0,active);else profiles.add(active);}
         selected = active==null?profiles.getFirst():active;
-        stage.setScene(new Scene(createContent(), 720, 510, Color.web("#111824")));
-        stage.setMinWidth(680);
-        stage.setMinHeight(480);
+        stage.setScene(new Scene(createContent(), 840,
+                Math.min(700, javafx.stage.Screen.getPrimary().getVisualBounds().getHeight() - 50), Color.web("#111824")));
+        stage.setMinWidth(800);
+        stage.setMinHeight(540);
         stage.setOnHidden(event -> {closed=true;files.shutdown();onHidden.run();});
         loadSelectedProfile();
     }
@@ -119,7 +128,10 @@ public final class PetCustomizationWindow {
 
         sizeSlider.setShowTickMarks(true);
         sizeSlider.setMajorTickUnit(0.5);
-        sizeSlider.setBlockIncrement(0.1);
+        sizeSlider.setMinorTickCount(1);
+        sizeSlider.setBlockIncrement(0.25);
+        sizeSlider.setSnapToTicks(true);
+        sizeSlider.setId("appearance-size");
         sizeSlider.valueProperty().addListener((observable, oldValue, newValue) -> drawPreview());
         flipCheck.setStyle(labelStyle());
         flipCheck.setTooltip(new javafx.scene.control.Tooltip("걷기·달리기 원본은 왼쪽 기준입니다. 오른쪽 방향으로 그린 기존 캐릭터는 이 옵션으로 보정하세요."));
@@ -146,20 +158,37 @@ public final class PetCustomizationWindow {
         colorPresets.getChildren().add(original);
         nameField.setPromptText("저장할 캐릭터 이름");
 
+        VBox equipment = new VBox(7);
+        Label equipmentTitle = new Label("장식품 · 왕관/모자 중 하나 + 안대·수염"); equipmentTitle.setStyle(labelStyle());
+        equipment.getChildren().add(equipmentTitle);
+        for (PetAccessory item : PetAccessory.values()) {
+            CheckBox choice = new CheckBox(item.getLabel());
+            choice.setId("accessory-" + item.name()); choice.setStyle(labelStyle());
+            choice.setOnAction(event -> {
+                if (choice.isSelected() && item == PetAccessory.CROWN) accessoryChoices.get(PetAccessory.HAT).setSelected(false);
+                if (choice.isSelected() && item == PetAccessory.HAT) accessoryChoices.get(PetAccessory.CROWN).setSelected(false);
+                drawPreview();
+            });
+            accessoryChoices.put(item, choice); equipment.getChildren().add(choice);
+        }
+
         VBox controls = new VBox(14,
                 labeled("캐릭터 이름", nameField),
                 labeled("크기 (50%–200%)", sizeSlider),
                 flipCheck,
-                new VBox(8, colorLabel, tintPicker, colorPresets));
+                new VBox(8, colorLabel, tintPicker, colorPresets), equipment);
         controls.setStyle("-fx-padding: 8 0 0 4;");
-        preview.setWidth(176);
-        preview.setHeight(176);
-        VBox previewPane = new VBox(10, new Label("미리보기"), preview);
+        StackPane previewSpace = new StackPane(preview);
+        previewSpace.setMinSize(280, 280); previewSpace.setPrefSize(280, 280); previewSpace.setMaxSize(280, 280);
+        previewSpace.setStyle("-fx-background-color: #1B2839;");
+        VBox previewPane = new VBox(10, new Label("미리보기 · 외형 전체 확대"), previewSpace);
         ((Label) previewPane.getChildren().getFirst()).setStyle(labelStyle());
         HBox center = new HBox(28, previewPane, controls);
         HBox.setHgrow(controls, Priority.ALWAYS);
         root.setTop(selectionRow);
-        root.setCenter(center);
+        ScrollPane scroll = new ScrollPane(center); scroll.setFitToWidth(true);
+        scroll.setStyle("-fx-background: #111824; -fx-background-color: #111824;");
+        root.setCenter(scroll);
 
         Label help = new Label("캐릭터를 선택하거나 .dotpet 프로젝트를 불러온 뒤 크기·방향·색조를 조정하세요.\n"
                 + "‘캐릭터 저장’은 목록에 보관하고, ‘펫에 적용’은 현재 펫과 다음 실행에 반영합니다.");
@@ -198,6 +227,7 @@ public final class PetCustomizationWindow {
             flipCheck.setSelected(selected.horizontalFlip());
             tintPicker.setValue(selected.tint());
             recolorBody = selected.recolorBody();
+            accessoryChoices.forEach((item, choice) -> choice.setSelected(selected.accessories().contains(item)));
             boolean slime = selected.id().equals("builtin") || selected.recolorBody();
             colorLabel.setText(slime ? "슬라임 몸체 색상" : "캐릭터 색조");
             colorPresets.setVisible(slime); colorPresets.setManaged(slime);
@@ -207,6 +237,8 @@ public final class PetCustomizationWindow {
 
     private void drawPreview() {
         if (selected == null) return;
+        double extent = PixelSizing.BASE_SIZE * sizeSlider.getValue();
+        preview.setWidth(extent); preview.setHeight(extent);
         GraphicsContext g = preview.getGraphicsContext2D();
         g.clearRect(0, 0, preview.getWidth(), preview.getHeight());
         double checker = 11;
@@ -216,19 +248,20 @@ public final class PetCustomizationWindow {
                 g.fillRect(x, y, checker, checker);
             }
         }
-        Frame frame = selected.animations().get(PetState.IDLE).getFrame(0);
-        double scale = Math.min(preview.getWidth(), preview.getHeight()) * sizeSlider.getValue() / frame.getWidth();
-        double offsetX = (preview.getWidth() - frame.getWidth() * scale) / 2;
-        double offsetY = (preview.getHeight() - frame.getHeight() * scale) / 2;
+        Frame frame = PetAppearance.compose(selected.animations().get(PetState.IDLE).getFrame(0),
+                tintPicker.getValue(), recolorBody, chosenAccessories());
+        double output = stage.isShowing() ? Math.min(stage.getRenderScaleX(), stage.getRenderScaleY()) : 1;
+        var layout = PixelSizing.fit(frame.getWidth(), frame.getHeight(), extent, extent, output);
+        double scale = layout.unit(), offsetX = layout.x(), offsetY = layout.y();
+        double mirrorWidth = Math.round(extent * output) / output;
         boolean mirror = flipCheck.isSelected();
         for (int y = 0; y < frame.getHeight(); y++) {
             for (int x = 0; x < frame.getWidth(); x++) {
                 int argb = frame.getPixel(x, y);
                 if ((argb >>> 24) == 0) continue;
-                g.setFill(PetColors.apply(argb, tintPicker.getValue(), recolorBody));
-                double left = Math.round(offsetX + x * scale), top = Math.round(offsetY + y * scale);
-                double right = Math.round(offsetX + (x + 1) * scale), bottom = Math.round(offsetY + (y + 1) * scale);
-                g.fillRect(mirror ? preview.getWidth() - right : left, top, right - left, bottom - top);
+                g.setFill(Color.rgb((argb >>> 16) & 255, (argb >>> 8) & 255, argb & 255, (argb >>> 24) / 255.0));
+                double left = offsetX + x * scale, top = offsetY + y * scale;
+                g.fillRect(mirror ? mirrorWidth - left - scale : left, top, scale, scale);
             }
         }
     }
@@ -300,7 +333,12 @@ public final class PetCustomizationWindow {
     }
 
     private PetCustomization fromControls(String id, String name, Map<PetState, Animation> animations) {
-        return new PetCustomization(id, name, animations, sizeSlider.getValue(), flipCheck.isSelected(), tintPicker.getValue(), recolorBody);
+        return new PetCustomization(id, name, animations, sizeSlider.getValue(), flipCheck.isSelected(), tintPicker.getValue(), recolorBody, chosenAccessories());
+    }
+
+    private Set<PetAccessory> chosenAccessories() {
+        return accessoryChoices.entrySet().stream().filter(entry -> entry.getValue().isSelected())
+                .map(Map.Entry::getKey).collect(Collectors.toUnmodifiableSet());
     }
 
     private int profileIndex(String id) {

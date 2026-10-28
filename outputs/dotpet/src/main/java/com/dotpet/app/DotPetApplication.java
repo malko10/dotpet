@@ -17,7 +17,7 @@ import javafx.stage.StageStyle;
 
 /** Starts the transparent desktop pet window. */
 public final class DotPetApplication extends Application {
-    private static final double PET_WINDOW_SIZE = 112;
+    private static final double PET_WINDOW_SIZE = com.dotpet.pet.PixelSizing.BASE_SIZE;
 
     @Override
     public void start(Stage stage) {

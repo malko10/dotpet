@@ -13,6 +13,10 @@ public final class PetSpeechController {
     private int previousIndex = -1;
     private String current;
     private boolean wasBlocked;
+    private String opening;
+    private long openingExpires;
+
+    public void queueGreeting(String message, long now) { opening = message; openingExpires = now + 30 * SECOND; }
 
     public PetSpeechController(long now) { this(now, ThreadLocalRandom.current()); }
 
@@ -23,6 +27,7 @@ public final class PetSpeechController {
 
     /** Returns the active line, or null while quiet. Call on the application's UI thread. */
     public String update(long now, boolean blocked) {
+        if (opening != null && now > openingExpires) opening = null;
         if (blocked) {
             current = null;
             wasBlocked = true;
@@ -31,6 +36,10 @@ public final class PetSpeechController {
         if (wasBlocked) {
             wasBlocked = false;
             nextAt = now + random.nextLong(12, 21) * SECOND;
+        }
+        if (opening != null) {
+            current = opening; opening = null; hideAt = now + VISIBLE_NANOS;
+            return current;
         }
         if (current != null && now >= hideAt) {
             current = null;

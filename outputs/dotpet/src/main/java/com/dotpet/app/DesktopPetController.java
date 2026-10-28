@@ -50,7 +50,7 @@ final class DesktopPetController {
     private static final double DRAG_THRESHOLD = 4;
     private static final long DRAG_SAMPLE_WINDOW_NANOS = 140_000_000L;
     private static final long CLICK_SUPPRESSION_NANOS = 240_000_000L;
-    private static final double DEFAULT_PET_SIZE = 112;
+    private static final double DEFAULT_PET_SIZE = com.dotpet.pet.PixelSizing.BASE_SIZE;
 
     private final Stage stage;
     private final Canvas canvas;
@@ -177,6 +177,8 @@ final class DesktopPetController {
                         movement.beginDrag();pet.moveToClamped(programSettings.x(),programSettings.y(),movement.getScreenBounds());movement.endDrag(0,0);
                     } else returnToGround();
                     placeWindowAtPetPosition();
+                    if (programSettings.speechEnabled()) speech.queueGreeting(
+                            com.dotpet.pet.PetGreetings.forTime(java.time.LocalTime.now()), System.nanoTime());
                     ready = true;renderer.render(pet,System.nanoTime());stage.show();timer.start();
                     persistenceStatus.set("설정과 적용한 캐릭터를 자동으로 저장합니다.");
                     String startupNotice = String.join(" ", inputNotice,settingsService.getProgramLoadNotice(),activePetRepository.getLoadNotice()).trim();
@@ -184,7 +186,7 @@ final class DesktopPetController {
                     final String notice = startupNotice;
                     inputService.configure(inputSettings).whenComplete((ignored, inputFailure) -> {
                         if (inputFailure != null) reportInputFailure("전역 입력 시작 실패: " + failureMessage(inputFailure));
-                        else quickActions.report(notice.isBlank() ? "설정은 자동 저장됩니다. 필요한 기능은 펫 메뉴에서 열어 보세요." : notice);
+                        else if (!notice.isBlank()) quickActions.report(notice);
                     });
                 }));
     }
@@ -488,14 +490,22 @@ final class DesktopPetController {
         renderer.applyUserAnimations(customization.animations());
         renderer.setTintColor(customization.tint());
         renderer.setRecolorBody(customization.recolorBody());
+        renderer.setAccessories(customization.accessories());
         renderer.setHorizontalFlip(customization.horizontalFlip());
 
-        double newSize = DEFAULT_PET_SIZE * customization.sizeScale();
+        resizePet(DEFAULT_PET_SIZE * customization.sizeScale());
+    }
+
+    private void resizePet(double newSize) {
+        boolean grounded = Math.abs(pet.getY() - movement.getGroundY()) < .5;
         pet.resize(newSize, movement.getScreenBounds());
+        if (grounded) pet.moveToClamped(pet.getX(), movement.getGroundY(), movement.getScreenBounds());
         canvas.setWidth(newSize);
         canvas.setHeight(newSize);
         if (stage.getScene().getRoot() instanceof StackPane root) root.setPrefSize(newSize, newSize);
         stage.sizeToScene();
+        stage.setWidth(newSize);
+        stage.setHeight(newSize);
         placeWindowAtPetPosition();
     }
 
@@ -513,14 +523,12 @@ final class DesktopPetController {
         programSettings = next;
         movement.setMovementEnabled(next.movementEnabled());
         if (movement.isGravityRemoved() == next.gravityEnabled()) movement.setGravityRemoved(!next.gravityEnabled());
-        double size = DEFAULT_PET_SIZE * next.sizeScale();pet.resize(size,movement.getScreenBounds());canvas.setWidth(size);canvas.setHeight(size);
-        if(stage.getScene().getRoot() instanceof StackPane root)root.setPrefSize(size,size);
-        stage.sizeToScene();placeWindowAtPetPosition();
+        resizePet(DEFAULT_PET_SIZE * next.sizeScale());
         stage.setAlwaysOnTop(next.alwaysOnTop() && (featureStage==null || !featureStage.isShowing()));
         if(!next.speechEnabled())speechBubble.hide();
         if(currentCustomization!=null)currentCustomization=new PetCustomization(currentCustomization.id(),currentCustomization.name(),
                 currentCustomization.animations(),next.sizeScale(),currentCustomization.horizontalFlip(),currentCustomization.tint(),
-                currentCustomization.recolorBody());
+                currentCustomization.recolorBody(), currentCustomization.accessories());
     }
 
     private void returnToGround() {

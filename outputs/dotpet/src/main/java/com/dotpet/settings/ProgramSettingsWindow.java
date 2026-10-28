@@ -37,7 +37,7 @@ public final class ProgramSettingsWindow {
         Label title = label("프로그램 설정"); title.setStyle("-fx-text-fill: #F3F6FC; -fx-font-size: 21px; -fx-font-weight: bold;");
         Label help = label("변경 사항은 바로 적용되고 자동 저장됩니다.\n적용한 캐릭터와 애니메이션도 다음 실행에 복원됩니다.\n중력을 끄면 펫이 현재 위치에 고정됩니다.");help.setWrapText(true);
         Label scale = label("");scale.textProperty().bind(size.valueProperty().multiply(100).asString("펫 크기 · %.0f%%"));
-        size.setId("settings-size");size.setShowTickLabels(true);size.setShowTickMarks(true);size.setMajorTickUnit(.5);size.setBlockIncrement(.1);
+        size.setId("settings-size");size.setShowTickLabels(true);size.setShowTickMarks(true);size.setMajorTickUnit(.5);size.setMinorTickCount(1);size.setBlockIncrement(.25);size.setSnapToTicks(true);
         for (CheckBox option : new CheckBox[]{movement, gravity, speech, top, remember}) option.setOnAction(event -> publish());
         size.valueProperty().addListener((o, before, after) -> {if (!size.isValueChanging()) publish();});
         size.valueChangingProperty().addListener((o, before, after) -> {if (!after) publish();});

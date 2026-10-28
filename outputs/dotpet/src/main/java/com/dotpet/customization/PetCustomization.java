@@ -3,11 +3,16 @@ package com.dotpet.customization;
 import com.dotpet.animation.Animation;
 import com.dotpet.pet.PetState;
 import java.util.Map;
+import java.util.Set;
 import javafx.scene.paint.Color;
 
 /** Selected character profile and its presentation settings. */
 public record PetCustomization(String id, String name, Map<PetState, Animation> animations,
-        double sizeScale, boolean horizontalFlip, Color tint, boolean recolorBody) {
+        double sizeScale, boolean horizontalFlip, Color tint, boolean recolorBody, Set<PetAccessory> accessories) {
+    public PetCustomization(String id, String name, Map<PetState, Animation> animations,
+            double sizeScale, boolean horizontalFlip, Color tint, boolean recolorBody) {
+        this(id, name, animations, sizeScale, horizontalFlip, tint, recolorBody, Set.of());
+    }
     public PetCustomization(String id, String name, Map<PetState, Animation> animations,
             double sizeScale, boolean horizontalFlip, Color tint) {
         this(id, name, animations, sizeScale, horizontalFlip, tint, false);
@@ -20,7 +25,7 @@ public record PetCustomization(String id, String name, Map<PetState, Animation> 
     /** Refresh bundled artwork after an update while retaining the user's appearance preferences. */
     public PetCustomization resolveBuiltIn(Map<PetState, Animation> currentAnimations) {
         return id.equals("builtin") ? new PetCustomization("builtin", "기본 슬라임", currentAnimations,
-                sizeScale, horizontalFlip, tint, recolorBody) : this;
+                sizeScale, horizontalFlip, tint, recolorBody, accessories) : this;
     }
 
     public PetCustomization {
@@ -28,5 +33,9 @@ public record PetCustomization(String id, String name, Map<PetState, Animation> 
         if (!Double.isFinite(sizeScale) || sizeScale < 0.5 || sizeScale > 2.0) throw new IllegalArgumentException("Size scale must be 0.5–2.0.");
         if (animations == null || animations.get(PetState.IDLE) == null || tint == null) throw new IllegalArgumentException("Profile needs idle animation and tint.");
         animations = Map.copyOf(animations);
+        accessories = Set.copyOf(accessories);
+        if (accessories.contains(PetAccessory.CROWN) && accessories.contains(PetAccessory.HAT)) {
+            var resolved = new java.util.HashSet<>(accessories); resolved.remove(PetAccessory.HAT); accessories = Set.copyOf(resolved);
+        }
     }
 }

@@ -4,7 +4,10 @@ import com.dotpet.animation.Animation;
 import com.dotpet.animation.DefaultPetAnimations;
 import com.dotpet.animation.Frame;
 import com.dotpet.animation.PetReactionFrames;
-import com.dotpet.customization.PetColors;
+import com.dotpet.customization.PetAppearance;
+import com.dotpet.customization.PetAccessory;
+import java.util.Set;
+import java.util.IdentityHashMap;
 import java.util.ArrayList;
 import java.util.EnumMap;
 import java.util.List;
@@ -23,6 +26,9 @@ public final class PetRenderer {
     private Color tintColor = Color.WHITE;
     private boolean horizontalFlip;
     private boolean recolorBody;
+    private Set<PetAccessory> accessories = Set.of();
+    private final Map<Frame, Frame> appearanceCache = new IdentityHashMap<>();
+    private Map<PetState, Animation> appearanceReactions;
     private PetState renderedState;
     private long stateStartedAt;
     private Rectangle2D spriteBounds = Rectangle2D.EMPTY;
@@ -47,6 +53,7 @@ public final class PetRenderer {
             animations.putAll(PetReactionFrames.create(editedIdle.getFrame(0)));
         }
         renderedState = null;
+        invalidateAppearance();
     }
 
     /** Creates a 32×32 editable starter image by nearest-neighbor scaling the built-in idle sprite. */
@@ -73,13 +80,19 @@ public final class PetRenderer {
 
     public void setTintColor(Color tintColor) {
         this.tintColor = tintColor == null ? Color.WHITE : tintColor;
+        invalidateAppearance();
     }
 
     public void setHorizontalFlip(boolean horizontalFlip) {
         this.horizontalFlip = horizontalFlip;
     }
 
-    public void setRecolorBody(boolean recolorBody) { this.recolorBody = recolorBody; }
+    public void setRecolorBody(boolean recolorBody) { this.recolorBody = recolorBody; invalidateAppearance(); }
+    public void setAccessories(Set<PetAccessory> accessories) { this.accessories = Set.copyOf(accessories); invalidateAppearance(); }
+    private void invalidateAppearance() { appearanceCache.clear(); appearanceReactions = null; }
+    private Frame appearance(Frame frame) {
+        return appearanceCache.computeIfAbsent(frame, source -> PetAppearance.compose(source, tintColor, recolorBody, accessories));
+    }
 
     /** Actual visible pixels in canvas coordinates, including custom artwork and reflection. */
     public Rectangle2D getSpriteBounds() { return spriteBounds; }
@@ -115,19 +128,23 @@ public final class PetRenderer {
         PetState animationState = pet.getState() == PetState.FALLING ? PetState.IDLE : pet.getState();
         Animation animation = animations.get(animationState);
         long elapsed = Math.max(0, now - stateStartedAt);
-        Frame frame = pet.getState().isReaction() ? animation.frameAtClamped(elapsed) : animation.frameAt(elapsed);
+        Frame frame;
+        if (pet.getState().isReaction()) {
+            if (appearanceReactions == null) appearanceReactions = PetReactionFrames.create(appearance(animations.get(PetState.IDLE).getFrame(0)));
+            frame = appearanceReactions.get(pet.getState()).frameAtClamped(elapsed);
+        } else frame = appearance(animation.frameAt(elapsed));
         graphics.clearRect(0, 0, canvas.getWidth(), canvas.getHeight());
 
-        double pixelScale = Math.min(canvas.getWidth() / frame.getWidth(), canvas.getHeight() / frame.getHeight());
-        double drawWidth = frame.getWidth() * pixelScale;
-        double drawHeight = frame.getHeight() * pixelScale;
-        double offsetX = (canvas.getWidth() - drawWidth) / 2;
-        double offsetY = (canvas.getHeight() - drawHeight) / 2;
+        double output = canvas.getScene() != null && canvas.getScene().getWindow() != null
+                ? Math.min(canvas.getScene().getWindow().getRenderScaleX(), canvas.getScene().getWindow().getRenderScaleY()) : 1;
+        var layout = PixelSizing.fit(frame.getWidth(), frame.getHeight(), canvas.getWidth(), canvas.getHeight(), output);
+        double pixelScale = layout.unit(), offsetX = layout.x(), offsetY = layout.y();
+        double mirrorWidth = Math.round(canvas.getWidth() * output) / output;
 
         graphics.save();
         // The author draws a left-facing original; rightward motion uses the reflected image.
         if (pet.isFacingRight() ^ horizontalFlip) {
-            graphics.translate(canvas.getWidth(), 0);
+            graphics.translate(mirrorWidth, 0);
             graphics.scale(-1, 1);
         }
         graphics.translate(offsetX, offsetY);
@@ -141,25 +158,20 @@ public final class PetRenderer {
                 }
                 minX = Math.min(minX, x); minY = Math.min(minY, y);
                 maxX = Math.max(maxX, x); maxY = Math.max(maxY, y);
-                graphics.setFill(toColor(argb));
-                double left = Math.round(x * pixelScale);
-                double top = Math.round(y * pixelScale);
-                double right = Math.round((x + 1) * pixelScale);
-                double bottom = Math.round((y + 1) * pixelScale);
+                graphics.setFill(Color.rgb((argb >>> 16) & 255, (argb >>> 8) & 255, argb & 255, (argb >>> 24) / 255.0));
+                double left = x * pixelScale, top = y * pixelScale;
+                double right = (x + 1) * pixelScale, bottom = (y + 1) * pixelScale;
                 graphics.fillRect(left, top, right - left, bottom - top);
             }
         }
         graphics.restore();
         if (maxX < minX || tintColor.getOpacity() == 0) spriteBounds = Rectangle2D.EMPTY;
         else {
-            double left = Math.round(minX * pixelScale), right = Math.round((maxX + 1) * pixelScale);
-            double top = Math.round(minY * pixelScale), bottom = Math.round((maxY + 1) * pixelScale);
-            double x = pet.isFacingRight() ^ horizontalFlip ? canvas.getWidth() - offsetX - right : offsetX + left;
+            double left = minX * pixelScale, right = (maxX + 1) * pixelScale;
+            double top = minY * pixelScale, bottom = (maxY + 1) * pixelScale;
+            double x = pet.isFacingRight() ^ horizontalFlip ? mirrorWidth - offsetX - right : offsetX + left;
             spriteBounds = new Rectangle2D(x, offsetY + top, right - left, bottom - top);
         }
     }
 
-    private Color toColor(int argb) {
-        return PetColors.apply(argb, tintColor, recolorBody);
-    }
 }
