@@ -12,11 +12,11 @@ import javafx.scene.control.Button;
 import javafx.scene.layout.Pane;
 import javafx.util.Duration;
 
-/** Opens readable, upright buttons along a pet-centered arc without crossing the sprite. */
+/** Opens and folds upright buttons along the same pet-centered arc. */
 final class PetMenuFan {
     private record Card(Button button, double radius, double angle) { }
     private final DoubleProperty progress = new SimpleDoubleProperty();
-    private final Timeline timeline;
+    private final Timeline timeline = new Timeline();
     private final List<Card> cards;
     private final Point2D origin;
     private final double heading;
@@ -31,14 +31,30 @@ final class PetMenuFan {
         heading = Math.atan2(Math.sin(cards.getFirst().angle()) + Math.sin(cards.getLast().angle()),
                 Math.cos(cards.getFirst().angle()) + Math.cos(cards.getLast().angle()));
         progress.addListener((observable, before, after) -> position(after.doubleValue()));
-        timeline = new Timeline(new KeyFrame(Duration.ZERO, new KeyValue(progress, 0)),
-                new KeyFrame(Duration.millis(220), new KeyValue(progress, 1, Interpolator.EASE_OUT)));
-        timeline.setOnFinished(event -> cards.forEach(card -> card.button().setMouseTransparent(false)));
         position(0);
     }
 
     void play() {
+        animateTo(1, () -> cards.forEach(card -> card.button().setMouseTransparent(false)));
+    }
+
+    void close(Runnable finished) {
+        animateTo(0, finished);
+    }
+
+    private void animateTo(double target, Runnable finished) {
+        timeline.stop();
         cards.forEach(card -> card.button().setMouseTransparent(true));
+        double current = progress.get();
+        if (Math.abs(current - target) < 0.001) {
+            progress.set(target);
+            finished.run();
+            return;
+        }
+        timeline.getKeyFrames().setAll(new KeyFrame(Duration.ZERO, new KeyValue(progress, current)),
+                new KeyFrame(Duration.millis(220 * Math.abs(target - current)),
+                        new KeyValue(progress, target, Interpolator.EASE_BOTH)));
+        timeline.setOnFinished(event -> finished.run());
         timeline.playFromStart();
     }
 

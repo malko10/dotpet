@@ -5,25 +5,17 @@ import javafx.geometry.Rectangle2D;
 import javafx.geometry.Point2D;
 import javafx.scene.control.Button;
 import javafx.scene.layout.Pane;
-import javafx.stage.Popup;
 import javafx.stage.Stage;
 
 /** Four function buttons on a clear semicircle centered on the pet. */
 public final class RadialMenu {
 
-    private final Popup popup = new Popup();
-    private final Consumer<Boolean> visibilityChanged;
+    private final PetMenuPopup popup;
     private final Consumer<RadialMenuAction> selectionHandler;
-    private PetMenuFan fan;
 
     public RadialMenu(Consumer<Boolean> visibilityChanged, Consumer<RadialMenuAction> selectionHandler) {
-        this.visibilityChanged = visibilityChanged;
+        this.popup = new PetMenuPopup(visibilityChanged);
         this.selectionHandler = selectionHandler;
-        popup.setAutoHide(true);
-        popup.setHideOnEscape(true);
-        popup.setAutoFix(false);
-        popup.setOnShown(event -> visibilityChanged.accept(true));
-        popup.setOnHidden(event -> { if (fan != null) fan.stop(); visibilityChanged.accept(false); });
     }
 
     public boolean isShowing() {
@@ -38,11 +30,8 @@ public final class RadialMenu {
 
         PetMenuLayout.Layout layout = PetMenuLayout.create(petX, petY, petSize, screenBounds);
         Pane content = createContent(layout);
-        fan = new PetMenuFan(content, new Point2D(petX + petSize / 2 - layout.bounds().getMinX(),
-                petY + petSize / 2 - layout.bounds().getMinY()));
-        popup.getContent().setAll(content);
-        popup.show(owner, layout.bounds().getMinX(), layout.bounds().getMinY());
-        fan.play();
+        popup.showFan(owner, content, new Point2D(petX + petSize / 2 - layout.bounds().getMinX(),
+                petY + petSize / 2 - layout.bounds().getMinY()), layout.bounds().getMinX(), layout.bounds().getMinY());
     }
 
     public void close() {
@@ -50,6 +39,8 @@ public final class RadialMenu {
             popup.hide();
         }
     }
+
+    public void closeImmediately() { popup.hideImmediately(); }
 
     private Pane createContent(PetMenuLayout.Layout layout) {
         Pane root = new Pane();
@@ -86,10 +77,7 @@ public final class RadialMenu {
             case PET_CUSTOMIZATION -> "그림·외형";
             case PROGRAM_SETTINGS -> "프로그램";
         };
-        Button button = PetMenuButton.create(icon, title, hint, () -> {
-            popup.hide();
-            selectionHandler.accept(action);
-        });
+        Button button = PetMenuButton.create(icon, title, hint, () -> popup.closeAfter(() -> selectionHandler.accept(action)));
         button.setId("menu-" + action.name().toLowerCase(java.util.Locale.ROOT));
         button.setLayoutX(centerX - PetMenuLayout.BUTTON_WIDTH / 2);
         button.setLayoutY(centerY - PetMenuLayout.BUTTON_HEIGHT / 2);

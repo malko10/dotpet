@@ -33,9 +33,6 @@ public record PetCustomization(String id, String name, Map<PetState, Animation> 
         if (!Double.isFinite(sizeScale) || sizeScale < 0.5 || sizeScale > 2.0) throw new IllegalArgumentException("Size scale must be 0.5–2.0.");
         if (animations == null || animations.get(PetState.IDLE) == null || tint == null) throw new IllegalArgumentException("Profile needs idle animation and tint.");
         animations = Map.copyOf(animations);
-        accessories = Set.copyOf(accessories);
-        if (accessories.contains(PetAccessory.CROWN) && accessories.contains(PetAccessory.HAT)) {
-            var resolved = new java.util.HashSet<>(accessories); resolved.remove(PetAccessory.HAT); accessories = Set.copyOf(resolved);
-        }
+        accessories = PetAccessory.headwear(Set.copyOf(accessories));
     }
 }

@@ -135,7 +135,7 @@ final class DesktopPetController {
                 this::updateMenuPause);
 
         canvas.addEventHandler(ContextMenuEvent.CONTEXT_MENU_REQUESTED, event -> {
-            showContextMenu();
+            if (event.isKeyboardTrigger()) showContextMenu();
             event.consume();
         });
 
@@ -193,8 +193,8 @@ final class DesktopPetController {
 
     void stop() {
         if (closing) return; closing = true;
-        radialMenu.close();
-        contextMenu.close();
+        radialMenu.closeImmediately();
+        contextMenu.closeImmediately();
         timer.stop();
         quickActions.close();
         inputService.close();
@@ -285,8 +285,8 @@ final class DesktopPetController {
             event.consume();
             return;
         }
-        contextMenu.close();
-        radialMenu.toggle(stage, pet.getX(), pet.getY(), pet.getSize(), movement.getScreenBounds());
+        if (contextMenu.isShowing()) contextMenu.close();
+        else radialMenu.toggle(stage, pet.getX(), pet.getY(), pet.getSize(), movement.getScreenBounds());
         event.consume();
     }
 
@@ -336,8 +336,8 @@ final class DesktopPetController {
     }
 
     private void showContextMenu() {
-        radialMenu.close();
-        contextMenu.show(stage, pet.getX(), pet.getY(), pet.getSize(), movement.getScreenBounds());
+        if (radialMenu.isShowing()) radialMenu.close();
+        else contextMenu.toggle(stage, pet.getX(), pet.getY(), pet.getSize(), movement.getScreenBounds());
     }
 
     private void updateMenuPause(boolean ignored) {

@@ -34,6 +34,9 @@ import javafx.scene.control.Label;
 import javafx.scene.control.Slider;
 import javafx.scene.control.ScrollPane;
 import javafx.scene.control.TextField;
+import javafx.scene.control.ToggleButton;
+import javafx.scene.control.ToggleGroup;
+import javafx.scene.control.ContentDisplay;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.FlowPane;
@@ -57,7 +60,9 @@ public final class PetCustomizationWindow {
     private final Label colorLabel = new Label();
     private final FlowPane colorPresets = new FlowPane(7, 7);
     private final Canvas preview = new Canvas(176, 176);
-    private final EnumMap<PetAccessory, CheckBox> accessoryChoices = new EnumMap<>(PetAccessory.class);
+    private final EnumMap<PetAccessory, ToggleButton> accessoryChoices = new EnumMap<>(PetAccessory.class);
+    private final ToggleGroup headwearGroup = new ToggleGroup();
+    private ToggleButton noAccessory;
     private final Label status = new Label();
     private final List<PetCustomization> profiles = new ArrayList<>();
     private final Consumer<PetCustomization> applyHandler;
@@ -159,17 +164,14 @@ public final class PetCustomizationWindow {
         nameField.setPromptText("저장할 캐릭터 이름");
 
         VBox equipment = new VBox(7);
-        Label equipmentTitle = new Label("장식품 · 왕관/모자 중 하나 + 안대·수염"); equipmentTitle.setStyle(labelStyle());
-        equipment.getChildren().add(equipmentTitle);
+        Label equipmentTitle = new Label("머리 장식 · 하나를 골라 씌우세요"); equipmentTitle.setStyle(labelStyle());
+        FlowPane headwearChoices = new FlowPane(7, 7);
+        equipment.getChildren().addAll(equipmentTitle, headwearChoices);
+        noAccessory = headwearChoice(null);
+        headwearChoices.getChildren().add(noAccessory);
         for (PetAccessory item : PetAccessory.values()) {
-            CheckBox choice = new CheckBox(item.getLabel());
-            choice.setId("accessory-" + item.name()); choice.setStyle(labelStyle());
-            choice.setOnAction(event -> {
-                if (choice.isSelected() && item == PetAccessory.CROWN) accessoryChoices.get(PetAccessory.HAT).setSelected(false);
-                if (choice.isSelected() && item == PetAccessory.HAT) accessoryChoices.get(PetAccessory.CROWN).setSelected(false);
-                drawPreview();
-            });
-            accessoryChoices.put(item, choice); equipment.getChildren().add(choice);
+            ToggleButton choice = headwearChoice(item);
+            accessoryChoices.put(item, choice); headwearChoices.getChildren().add(choice);
         }
 
         VBox controls = new VBox(14,
@@ -218,6 +220,35 @@ public final class PetCustomizationWindow {
         return new VBox(6, label, control);
     }
 
+    private ToggleButton headwearChoice(PetAccessory item) {
+        ToggleButton choice = new ToggleButton(item == null ? "장식 없음" : item.getLabel());
+        choice.setId("accessory-" + (item == null ? "NONE" : item.name()));
+        choice.setToggleGroup(headwearGroup);
+        choice.setContentDisplay(ContentDisplay.TOP);
+        choice.setPrefSize(100, 92);
+        choice.setFocusTraversable(false);
+        Canvas icon = new Canvas(64, 64);
+        icon.setMouseTransparent(true);
+        Frame frame = PetAppearance.compose(profiles.getFirst().animations().get(PetState.IDLE).getFrame(0),
+                Color.WHITE, false, item == null ? Set.of() : Set.of(item));
+        var g = icon.getGraphicsContext2D();
+        double scale = Math.floor(64.0 / Math.max(frame.getWidth(), frame.getHeight()));
+        for (int y = 0; y < frame.getHeight(); y++) for (int x = 0; x < frame.getWidth(); x++) {
+            int color = frame.getPixel(x, y);
+            if ((color >>> 24) == 0) continue;
+            g.setFill(Color.rgb((color >>> 16) & 255, (color >>> 8) & 255, color & 255, (color >>> 24) / 255.0));
+            g.fillRect(x * scale, y * scale, scale, scale);
+        }
+        choice.setGraphic(icon);
+        Runnable style = () -> choice.setStyle("-fx-text-fill: #F3F6FC; -fx-background-radius: 7; -fx-border-radius: 7; "
+                + (choice.isSelected() ? "-fx-background-color: #344D6D; -fx-border-color: #9EDAC7;"
+                : "-fx-background-color: #1B2839; -fx-border-color: #43556D;"));
+        choice.selectedProperty().addListener((observable, before, after) -> style.run());
+        style.run();
+        choice.setOnAction(event -> { choice.setSelected(true); drawPreview(); });
+        return choice;
+    }
+
     private void loadSelectedProfile() {
         updating = true;
         try {
@@ -227,7 +258,8 @@ public final class PetCustomizationWindow {
             flipCheck.setSelected(selected.horizontalFlip());
             tintPicker.setValue(selected.tint());
             recolorBody = selected.recolorBody();
-            accessoryChoices.forEach((item, choice) -> choice.setSelected(selected.accessories().contains(item)));
+            noAccessory.setSelected(true);
+            accessoryChoices.forEach((item, choice) -> { if (selected.accessories().contains(item)) choice.setSelected(true); });
             boolean slime = selected.id().equals("builtin") || selected.recolorBody();
             colorLabel.setText(slime ? "슬라임 몸체 색상" : "캐릭터 색조");
             colorPresets.setVisible(slime); colorPresets.setManaged(slime);

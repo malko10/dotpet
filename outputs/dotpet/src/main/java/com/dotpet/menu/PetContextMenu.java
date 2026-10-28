@@ -6,18 +6,16 @@ import javafx.geometry.Rectangle2D;
 import javafx.geometry.Point2D;
 import javafx.scene.control.Button;
 import javafx.scene.layout.Pane;
-import javafx.stage.Popup;
 import javafx.stage.Stage;
 
 /** Clear action names and live state hints on the same adaptive arc as the main menu. */
 public final class PetContextMenu {
-    private final Popup popup = new Popup();
+    private final PetMenuPopup popup;
     private final BooleanSupplier movementEnabled;
     private final BooleanSupplier gravityRemoved;
     private final Runnable toggleMovement;
     private final Runnable toggleGravity;
     private final Runnable exitAction;
-    private PetMenuFan fan;
 
     public PetContextMenu(BooleanSupplier movementEnabled, BooleanSupplier gravityRemoved,
             Runnable toggleMovement, Runnable toggleGravity, Runnable exitAction,
@@ -27,14 +25,15 @@ public final class PetContextMenu {
         this.toggleMovement = toggleMovement;
         this.toggleGravity = toggleGravity;
         this.exitAction = exitAction;
-        popup.setAutoHide(true);
-        popup.setHideOnEscape(true);
-        popup.setAutoFix(false);
-        popup.setOnShown(event -> visibilityChanged.accept(true));
-        popup.setOnHidden(event -> { if (fan != null) fan.stop(); visibilityChanged.accept(false); });
+        this.popup = new PetMenuPopup(visibilityChanged);
     }
 
     public boolean isShowing() { return popup.isShowing(); }
+
+    public void toggle(Stage owner, double petX, double petY, double petSize, Rectangle2D screen) {
+        if (popup.isShowing()) close();
+        else show(owner, petX, petY, petSize, screen);
+    }
 
     public void show(Stage owner, double petX, double petY, double petSize, Rectangle2D screen) {
         if (popup.isShowing()) return;
@@ -53,18 +52,17 @@ public final class PetContextMenu {
                 fixed ? PetMenuButton.Icon.GRAVITY : PetMenuButton.Icon.PIN,
                 fixed ? "중력 켜기" : "공중 고정", fixed ? "공중 고정 중" : "중력 사용 중", toggleGravity);
         addButton(root, layout, 2, "menu-exit", PetMenuButton.Icon.EXIT, "종료", "DoT Pet 닫기", exitAction);
-        fan = new PetMenuFan(root, new Point2D(petX + petSize / 2 - layout.bounds().getMinX(),
-                petY + petSize / 2 - layout.bounds().getMinY()));
-        popup.getContent().setAll(root);
-        popup.show(owner, layout.bounds().getMinX(), layout.bounds().getMinY());
-        fan.play();
+        popup.showFan(owner, root, new Point2D(petX + petSize / 2 - layout.bounds().getMinX(),
+                petY + petSize / 2 - layout.bounds().getMinY()), layout.bounds().getMinX(), layout.bounds().getMinY());
     }
 
     public void close() { if (popup.isShowing()) popup.hide(); }
 
+    public void closeImmediately() { popup.hideImmediately(); }
+
     private void addButton(Pane root, PetMenuLayout.Layout layout, int index, String id,
             PetMenuButton.Icon icon, String title, String hint, Runnable action) {
-        Button button = PetMenuButton.create(icon, title, hint, () -> { popup.hide(); action.run(); });
+        Button button = PetMenuButton.create(icon, title, hint, () -> popup.closeAfter(action));
         button.setId(id);
         button.setLayoutX(layout.centers().get(index).getX() - layout.bounds().getMinX() - PetMenuLayout.BUTTON_WIDTH / 2);
         button.setLayoutY(layout.centers().get(index).getY() - layout.bounds().getMinY() - PetMenuLayout.BUTTON_HEIGHT / 2);
