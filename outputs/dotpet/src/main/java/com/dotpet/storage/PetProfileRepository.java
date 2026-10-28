@@ -46,7 +46,8 @@ public final class PetProfileRepository {
                     double scale = parseScale(metadata.getProperty("sizeScale", "1.0"));
                     boolean flip = Boolean.parseBoolean(metadata.getProperty("horizontalFlip", "false"));
                     Color tint = parseColor(metadata.getProperty("tint", "#FFFFFFFF"));
-                    profiles.add(new PetCustomization(id, name, project.toAnimations(), scale, flip, tint));
+                    profiles.add(new PetCustomization(id, name, project.toAnimations(), scale, flip, tint,
+                            Boolean.parseBoolean(metadata.getProperty("recolorBody", "false"))));
                 } catch (RuntimeException | IOException ignored) {
                     loadNotice = "일부 캐릭터를 읽지 못했습니다. 해당 파일은 보존했어요.";
                 }
@@ -72,9 +73,10 @@ public final class PetProfileRepository {
         metadata.setProperty("sizeScale", Double.toString(profile.sizeScale()));
         metadata.setProperty("horizontalFlip", Boolean.toString(profile.horizontalFlip()));
         metadata.setProperty("tint", colorHex(profile.tint()));
+        metadata.setProperty("recolorBody", Boolean.toString(profile.recolorBody()));
         AtomicFiles.writeProperties(directory.resolve(id + ".properties"), metadata, true);
         return new PetCustomization(id, profile.name(), project.toAnimations(), profile.sizeScale(),
-                profile.horizontalFlip(), profile.tint());
+                profile.horizontalFlip(), profile.tint(), profile.recolorBody());
     }
 
     public Path getDirectory() { return directory; }

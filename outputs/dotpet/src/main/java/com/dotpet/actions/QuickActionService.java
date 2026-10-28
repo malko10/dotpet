@@ -190,6 +190,14 @@ public final class QuickActionService implements AutoCloseable {
         });
     }
 
+    public void switchWindow() {
+        long run = begin(); if (run < 0) return;
+        runWorker(run, () -> {
+            runKeyboard(() -> new WindowSwitchAction().execute());
+            if (generation.get() == run) { report("Alt+Tab 창 전환 명령을 보냈어요."); finish(run); }
+        });
+    }
+
     private void completeAutoClick(long run) {
         synchronized (runLock) {
             if (generation.get() != run) return;

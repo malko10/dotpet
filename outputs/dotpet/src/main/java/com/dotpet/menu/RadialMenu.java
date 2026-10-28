@@ -2,6 +2,7 @@ package com.dotpet.menu;
 
 import java.util.function.Consumer;
 import javafx.geometry.Rectangle2D;
+import javafx.geometry.Point2D;
 import javafx.scene.control.Button;
 import javafx.scene.layout.Pane;
 import javafx.stage.Popup;
@@ -13,6 +14,7 @@ public final class RadialMenu {
     private final Popup popup = new Popup();
     private final Consumer<Boolean> visibilityChanged;
     private final Consumer<RadialMenuAction> selectionHandler;
+    private PetMenuFan fan;
 
     public RadialMenu(Consumer<Boolean> visibilityChanged, Consumer<RadialMenuAction> selectionHandler) {
         this.visibilityChanged = visibilityChanged;
@@ -21,7 +23,7 @@ public final class RadialMenu {
         popup.setHideOnEscape(true);
         popup.setAutoFix(false);
         popup.setOnShown(event -> visibilityChanged.accept(true));
-        popup.setOnHidden(event -> visibilityChanged.accept(false));
+        popup.setOnHidden(event -> { if (fan != null) fan.stop(); visibilityChanged.accept(false); });
     }
 
     public boolean isShowing() {
@@ -35,8 +37,12 @@ public final class RadialMenu {
         }
 
         PetMenuLayout.Layout layout = PetMenuLayout.create(petX, petY, petSize, screenBounds);
-        popup.getContent().setAll(createContent(layout));
+        Pane content = createContent(layout);
+        fan = new PetMenuFan(content, new Point2D(petX + petSize / 2 - layout.bounds().getMinX(),
+                petY + petSize / 2 - layout.bounds().getMinY()));
+        popup.getContent().setAll(content);
         popup.show(owner, layout.bounds().getMinX(), layout.bounds().getMinY());
+        fan.play();
     }
 
     public void close() {

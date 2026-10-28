@@ -31,6 +31,7 @@ import javafx.scene.control.Slider;
 import javafx.scene.control.TextField;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.HBox;
+import javafx.scene.layout.FlowPane;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.VBox;
 import javafx.scene.paint.Color;
@@ -47,6 +48,8 @@ public final class PetCustomizationWindow {
     private final Slider sizeSlider = new Slider(0.5, 2.0, 1.0);
     private final CheckBox flipCheck = new CheckBox("좌우 반전");
     private final ColorPicker tintPicker = new ColorPicker(Color.WHITE);
+    private final Label colorLabel = new Label();
+    private final FlowPane colorPresets = new FlowPane(7, 7);
     private final Canvas preview = new Canvas(176, 176);
     private final Label status = new Label();
     private final List<PetCustomization> profiles = new ArrayList<>();
@@ -54,6 +57,7 @@ public final class PetCustomizationWindow {
     private final Runnable onHidden;
     private PetCustomization selected;
     private boolean updating;
+    private boolean recolorBody;
     private boolean closed, loadingStarted;
     private final ExecutorService files = Executors.newSingleThreadExecutor(task -> new Thread(task,"dotpet-profile-files"));
 
@@ -120,14 +124,33 @@ public final class PetCustomizationWindow {
         flipCheck.setStyle(labelStyle());
         flipCheck.setTooltip(new javafx.scene.control.Tooltip("걷기·달리기 원본은 왼쪽 기준입니다. 오른쪽 방향으로 그린 기존 캐릭터는 이 옵션으로 보정하세요."));
         flipCheck.setOnAction(event -> drawPreview());
-        tintPicker.setOnAction(event -> drawPreview());
+        tintPicker.setId("pet-color");
+        tintPicker.setOnAction(event -> {
+            if (selected.id().equals("builtin") || selected.recolorBody()) recolorBody = true;
+            drawPreview();
+        });
+        colorLabel.setStyle(labelStyle());
+        String[] colors = {"#75B9FF", "#78D877", "#F08DB5", "#F3C35F", "#B69AF0", "#FFFFFF"};
+        for (String hex : colors) {
+            Button swatch = button("");
+            swatch.setId("slime-color-" + hex.substring(1));
+            swatch.setMinSize(27, 27); swatch.setPrefSize(27, 27);
+            swatch.setStyle("-fx-background-color: " + hex + "; -fx-border-color: #B4C7DE; -fx-background-radius: 5; -fx-border-radius: 5;");
+            swatch.setAccessibleText("슬라임 색상 " + hex);
+            swatch.setTooltip(new javafx.scene.control.Tooltip("슬라임 몸체 색상 " + hex));
+            swatch.setOnAction(event -> { recolorBody = true; tintPicker.setValue(Color.web(hex)); drawPreview(); });
+            colorPresets.getChildren().add(swatch);
+        }
+        Button original = button("기본 파랑"); original.setId("slime-color-reset");
+        original.setOnAction(event -> { recolorBody = false; tintPicker.setValue(Color.WHITE); drawPreview(); });
+        colorPresets.getChildren().add(original);
         nameField.setPromptText("저장할 캐릭터 이름");
 
         VBox controls = new VBox(14,
                 labeled("캐릭터 이름", nameField),
                 labeled("크기 (50%–200%)", sizeSlider),
                 flipCheck,
-                labeled("캐릭터 색조", tintPicker));
+                new VBox(8, colorLabel, tintPicker, colorPresets));
         controls.setStyle("-fx-padding: 8 0 0 4;");
         preview.setWidth(176);
         preview.setHeight(176);
@@ -147,6 +170,7 @@ public final class PetCustomizationWindow {
         Button save = button("캐릭터 저장");
         save.setOnAction(event -> saveProfile());
         Button apply = button("펫에 적용 후 닫기");
+        apply.setId("apply-appearance");
         apply.setOnAction(event -> {
             PetCustomization customization = fromControls(selected.id(), displayName(), selected.animations());
             applyHandler.accept(customization);
@@ -173,6 +197,10 @@ public final class PetCustomizationWindow {
             sizeSlider.setValue(selected.sizeScale());
             flipCheck.setSelected(selected.horizontalFlip());
             tintPicker.setValue(selected.tint());
+            recolorBody = selected.recolorBody();
+            boolean slime = selected.id().equals("builtin") || selected.recolorBody();
+            colorLabel.setText(slime ? "슬라임 몸체 색상" : "캐릭터 색조");
+            colorPresets.setVisible(slime); colorPresets.setManaged(slime);
         } finally { updating = false; }
         drawPreview();
     }
@@ -197,13 +225,10 @@ public final class PetCustomizationWindow {
             for (int x = 0; x < frame.getWidth(); x++) {
                 int argb = frame.getPixel(x, y);
                 if ((argb >>> 24) == 0) continue;
-                int red = multiply((argb >> 16) & 255, tintPicker.getValue().getRed());
-                int green = multiply((argb >> 8) & 255, tintPicker.getValue().getGreen());
-                int blue = multiply(argb & 255, tintPicker.getValue().getBlue());
-                g.setFill(Color.rgb(red, green, blue, ((argb >>> 24) & 255) / 255.0));
-                double x1 = offsetX + x * scale;
-                double y1 = offsetY + y * scale;
-                g.fillRect(mirror ? preview.getWidth() - x1 - scale : x1, y1, scale + 0.05, scale + 0.05);
+                g.setFill(PetColors.apply(argb, tintPicker.getValue(), recolorBody));
+                double left = Math.round(offsetX + x * scale), top = Math.round(offsetY + y * scale);
+                double right = Math.round(offsetX + (x + 1) * scale), bottom = Math.round(offsetY + (y + 1) * scale);
+                g.fillRect(mirror ? preview.getWidth() - right : left, top, right - left, bottom - top);
             }
         }
     }
@@ -275,7 +300,7 @@ public final class PetCustomizationWindow {
     }
 
     private PetCustomization fromControls(String id, String name, Map<PetState, Animation> animations) {
-        return new PetCustomization(id, name, animations, sizeSlider.getValue(), flipCheck.isSelected(), tintPicker.getValue());
+        return new PetCustomization(id, name, animations, sizeSlider.getValue(), flipCheck.isSelected(), tintPicker.getValue(), recolorBody);
     }
 
     private int profileIndex(String id) {
@@ -305,8 +330,6 @@ public final class PetCustomizationWindow {
                     else done.accept(result);
                 }));
     }
-
-    private static int multiply(int channel, double tint) { return (int) Math.round(channel * tint); }
 
     private static Button button(String text) {
         Button button = new Button(text);

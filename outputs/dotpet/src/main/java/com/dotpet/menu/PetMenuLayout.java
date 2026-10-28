@@ -36,18 +36,25 @@ final class PetMenuLayout {
                     double angle = heading - Math.toRadians(arcDegrees / 2) + index * step;
                     centers.add(new Point2D(centerX + radius * Math.cos(angle), centerY + radius * Math.sin(angle)));
                 }
-                Layout layout = layoutOf(centers);
+                List<Point2D> envelope = new ArrayList<>(centers);
+                double start = heading - Math.toRadians(arcDegrees / 2), end = heading + Math.toRadians(arcDegrees / 2);
+                for (int quadrant = -8; quadrant <= 8; quadrant++) {
+                    double angle = quadrant * Math.PI / 2;
+                    if (angle >= start && angle <= end)
+                        envelope.add(new Point2D(centerX + radius * Math.cos(angle), centerY + radius * Math.sin(angle)));
+                }
+                Layout layout = layoutOf(centers, envelope);
                 if (fits(layout, petX, petY, petSize, screen)) return layout;
             }
         }
         throw new IllegalArgumentException("화면에 메뉴를 펼칠 공간이 부족합니다.");
     }
 
-    private static Layout layoutOf(List<Point2D> centers) {
-        double left = centers.stream().mapToDouble(Point2D::getX).min().orElseThrow() - BUTTON_WIDTH / 2;
-        double top = centers.stream().mapToDouble(Point2D::getY).min().orElseThrow() - BUTTON_HEIGHT / 2;
-        double right = centers.stream().mapToDouble(Point2D::getX).max().orElseThrow() + BUTTON_WIDTH / 2;
-        double bottom = centers.stream().mapToDouble(Point2D::getY).max().orElseThrow() + BUTTON_HEIGHT / 2;
+    private static Layout layoutOf(List<Point2D> centers, List<Point2D> envelope) {
+        double left = envelope.stream().mapToDouble(Point2D::getX).min().orElseThrow() - BUTTON_WIDTH / 2;
+        double top = envelope.stream().mapToDouble(Point2D::getY).min().orElseThrow() - BUTTON_HEIGHT / 2;
+        double right = envelope.stream().mapToDouble(Point2D::getX).max().orElseThrow() + BUTTON_WIDTH / 2;
+        double bottom = envelope.stream().mapToDouble(Point2D::getY).max().orElseThrow() + BUTTON_HEIGHT / 2;
         return new Layout(List.copyOf(centers), new Rectangle2D(left, top, right - left, bottom - top));
     }
 

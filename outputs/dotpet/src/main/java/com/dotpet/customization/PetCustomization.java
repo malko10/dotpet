@@ -7,7 +7,11 @@ import javafx.scene.paint.Color;
 
 /** Selected character profile and its presentation settings. */
 public record PetCustomization(String id, String name, Map<PetState, Animation> animations,
-        double sizeScale, boolean horizontalFlip, Color tint) {
+        double sizeScale, boolean horizontalFlip, Color tint, boolean recolorBody) {
+    public PetCustomization(String id, String name, Map<PetState, Animation> animations,
+            double sizeScale, boolean horizontalFlip, Color tint) {
+        this(id, name, animations, sizeScale, horizontalFlip, tint, false);
+    }
     public static PetCustomization builtIn(Map<PetState, Animation> animations, double sizeScale,
             boolean horizontalFlip, Color tint) {
         return new PetCustomization("builtin", "기본 슬라임", animations, sizeScale, horizontalFlip, tint);
@@ -15,7 +19,8 @@ public record PetCustomization(String id, String name, Map<PetState, Animation> 
 
     /** Refresh bundled artwork after an update while retaining the user's appearance preferences. */
     public PetCustomization resolveBuiltIn(Map<PetState, Animation> currentAnimations) {
-        return id.equals("builtin") ? builtIn(currentAnimations, sizeScale, horizontalFlip, tint) : this;
+        return id.equals("builtin") ? new PetCustomization("builtin", "기본 슬라임", currentAnimations,
+                sizeScale, horizontalFlip, tint, recolorBody) : this;
     }
 
     public PetCustomization {

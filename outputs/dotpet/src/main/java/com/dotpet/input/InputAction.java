@@ -11,6 +11,7 @@ public enum InputAction {
     PASTE_CLIPBOARD("붙여넣기"),
     SELECT_ALL("전체 선택 (Ctrl+A)"),
     COPY_ALL("전체 선택 후 복사"),
+    SWITCH_WINDOW("창 전환 (Alt+Tab)"),
     START_AUTO_CLICK("오토 클릭 시작"),
     STOP_AUTO_CLICK("긴급 중지"),
     TOGGLE_MOVEMENT("펫 자동 이동 켜기/끄기"),

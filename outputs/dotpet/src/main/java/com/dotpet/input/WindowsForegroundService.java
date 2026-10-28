@@ -33,6 +33,12 @@ public final class WindowsForegroundService {
         requireExternalWindowHandle();
     }
 
+    public long requireForegroundWindowHandle() {
+        var window = User32.INSTANCE.GetForegroundWindow();
+        if (window == null) throw new IllegalStateException("전환할 창을 선택하세요.");
+        return Pointer.nativeValue(window.getPointer());
+    }
+
     public long requireExternalWindowHandle() {
         var window = User32.INSTANCE.GetForegroundWindow();
         if (window == null) throw new IllegalStateException("작업할 대상 창을 선택하세요.");

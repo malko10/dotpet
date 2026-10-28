@@ -427,6 +427,7 @@ final class DesktopPetController {
                 case PASTE_CLIPBOARD -> quickActions.pasteClipboard();
                 case SELECT_ALL -> quickActions.selectAll(false);
                 case COPY_ALL -> quickActions.selectAll(true);
+                case SWITCH_WINDOW -> quickActions.switchWindow();
                 case START_AUTO_CLICK -> quickActions.startAutoClick();
                 case COPY_FILE_PATH -> {
                     movement.setInteractionPaused(true);
@@ -486,6 +487,7 @@ final class DesktopPetController {
         currentCustomization = customization;
         renderer.applyUserAnimations(customization.animations());
         renderer.setTintColor(customization.tint());
+        renderer.setRecolorBody(customization.recolorBody());
         renderer.setHorizontalFlip(customization.horizontalFlip());
 
         double newSize = DEFAULT_PET_SIZE * customization.sizeScale();
@@ -517,7 +519,8 @@ final class DesktopPetController {
         stage.setAlwaysOnTop(next.alwaysOnTop() && (featureStage==null || !featureStage.isShowing()));
         if(!next.speechEnabled())speechBubble.hide();
         if(currentCustomization!=null)currentCustomization=new PetCustomization(currentCustomization.id(),currentCustomization.name(),
-                currentCustomization.animations(),next.sizeScale(),currentCustomization.horizontalFlip(),currentCustomization.tint());
+                currentCustomization.animations(),next.sizeScale(),currentCustomization.horizontalFlip(),currentCustomization.tint(),
+                currentCustomization.recolorBody());
     }
 
     private void returnToGround() {

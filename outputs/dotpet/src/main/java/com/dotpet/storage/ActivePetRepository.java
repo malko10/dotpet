@@ -56,6 +56,7 @@ public final class ActivePetRepository {
             appearance.setProperty("sizeScale", Double.toString(profile.sizeScale()));
             appearance.setProperty("horizontalFlip", Boolean.toString(profile.horizontalFlip()));
             appearance.setProperty("tint", profile.tint().toString());
+            appearance.setProperty("recolorBody", Boolean.toString(profile.recolorBody()));
             StringWriter metadata = new StringWriter(); appearance.store(metadata, "Applied DoT Pet");
             try (var zip = new ZipOutputStream(Files.newOutputStream(archive), StandardCharsets.UTF_8)) {
                 zip.putNextEntry(new ZipEntry("project.dotpet")); Files.copy(projectFile, zip); zip.closeEntry();
@@ -79,7 +80,8 @@ public final class ActivePetRepository {
             var project = PixelEditorWindow.readProject(json);
             return new PetCustomization(metadata.getProperty("id"), metadata.getProperty("name"), project.toAnimations(),
                     Double.parseDouble(metadata.getProperty("sizeScale")),
-                    Boolean.parseBoolean(metadata.getProperty("horizontalFlip")), Color.web(metadata.getProperty("tint")));
+                    Boolean.parseBoolean(metadata.getProperty("horizontalFlip")), Color.web(metadata.getProperty("tint")),
+                    Boolean.parseBoolean(metadata.getProperty("recolorBody", "false")));
         }
     }
 

@@ -4,6 +4,7 @@ import com.dotpet.animation.Animation;
 import com.dotpet.animation.DefaultPetAnimations;
 import com.dotpet.animation.Frame;
 import com.dotpet.animation.PetReactionFrames;
+import com.dotpet.customization.PetColors;
 import java.util.ArrayList;
 import java.util.EnumMap;
 import java.util.List;
@@ -21,6 +22,7 @@ public final class PetRenderer {
     private final Map<PetState, Animation> builtInAnimations;
     private Color tintColor = Color.WHITE;
     private boolean horizontalFlip;
+    private boolean recolorBody;
     private PetState renderedState;
     private long stateStartedAt;
     private Rectangle2D spriteBounds = Rectangle2D.EMPTY;
@@ -76,6 +78,8 @@ public final class PetRenderer {
     public void setHorizontalFlip(boolean horizontalFlip) {
         this.horizontalFlip = horizontalFlip;
     }
+
+    public void setRecolorBody(boolean recolorBody) { this.recolorBody = recolorBody; }
 
     /** Actual visible pixels in canvas coordinates, including custom artwork and reflection. */
     public Rectangle2D getSpriteBounds() { return spriteBounds; }
@@ -156,10 +160,6 @@ public final class PetRenderer {
     }
 
     private Color toColor(int argb) {
-        int alpha = (argb >>> 24) & 0xFF;
-        int red = (int) Math.round(((argb >>> 16) & 0xFF) * tintColor.getRed());
-        int green = (int) Math.round(((argb >>> 8) & 0xFF) * tintColor.getGreen());
-        int blue = (int) Math.round((argb & 0xFF) * tintColor.getBlue());
-        return Color.rgb(red, green, blue, alpha / 255.0 * tintColor.getOpacity());
+        return PetColors.apply(argb, tintColor, recolorBody);
     }
 }
