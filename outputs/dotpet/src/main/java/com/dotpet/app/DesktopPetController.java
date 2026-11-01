@@ -13,6 +13,10 @@ import com.dotpet.pet.PetState;
 import com.dotpet.pet.PetAngerController;
 import com.dotpet.actions.QuickActionsWindow;
 import com.dotpet.actions.QuickActionService;
+import com.dotpet.actions.WebSearchService;
+import com.dotpet.actions.SearchWindow;
+import com.dotpet.actions.RecycleBinService;
+import com.dotpet.actions.RecycleBinWindow;
 import com.dotpet.input.InputAction;
 import com.dotpet.input.InputSettingsWindow;
 import com.dotpet.input.WindowsInputService;
@@ -66,6 +70,9 @@ final class DesktopPetController {
     });
     private final WindowsInputService inputService;
     private final QuickActionService quickActions;
+    private final WebSearchService webSearch;
+    private final RecycleBinService recycleBin;
+    private final ExecutorService fileWorker = Executors.newSingleThreadExecutor(task -> new Thread(task, "dotpet-file-drop"));
     private final DesktopStatusView statusView;
     private final PetSpeechController speech = new PetSpeechController(System.nanoTime());
     private final PetSpeechBubble speechBubble;
@@ -74,6 +81,7 @@ final class DesktopPetController {
     private volatile InputSettings inputSettings;
     private volatile String inputNotice = "";
     private Stage featureStage;
+    private RecycleBinWindow recycleWindow;
     private volatile boolean closing;
     private boolean ready;
     private ProgramSettings programSettings = ProgramSettings.defaults();
@@ -87,6 +95,7 @@ final class DesktopPetController {
     private final ArrayDeque<DragSample> dragSamples = new ArrayDeque<>();
     private boolean primaryPressed;
     private boolean dragging;
+    private boolean fileHover, fileBusy;
     private double pressScreenX;
     private double pressScreenY;
     private double pressWindowX;
@@ -100,11 +109,18 @@ final class DesktopPetController {
             Pet pet,
             PetMovementController movement,
             PetRenderer renderer) {
+        this(stage, canvas, pet, movement, renderer, new RecycleBinService(), null);
+    }
+
+    DesktopPetController(Stage stage, Canvas canvas, Pet pet, PetMovementController movement, PetRenderer renderer,
+            RecycleBinService recycleBin, WebSearchService webSearch) {
         this.stage = stage;
         this.canvas = canvas;
         this.pet = pet;
         this.movement = movement;
         this.renderer = renderer;
+        this.recycleBin = recycleBin;
+        this.webSearch = webSearch == null ? new WebSearchService(settingsService) : webSearch;
         this.inputSettings = InputSettings.defaults();
         this.inputService = new WindowsInputService(settingsService.getDirectory(), this::handleGlobalAction, this::reportInputFailure);
         this.quickActions = new QuickActionService(inputService, () -> inputSettings, this::applyInputSettings);
@@ -119,6 +135,7 @@ final class DesktopPetController {
                 movement.update(now);
                 placeWindowAtPetPosition();
                 renderer.render(pet, now);
+                if (fileHover) drawFileDropOutline();
                 statusView.reposition();
                 updateSpeech(now);
                 updateAngerEffect();
@@ -144,6 +161,11 @@ final class DesktopPetController {
         canvas.addEventHandler(MouseEvent.MOUSE_DRAGGED, event -> handleMouseDragged(event));
         canvas.addEventHandler(MouseEvent.MOUSE_RELEASED, event -> handleMouseReleased(event));
         canvas.addEventHandler(MouseEvent.MOUSE_CLICKED, event -> handleMouseClicked(event));
+        new PetFileDropTarget(canvas,
+                () -> ready && !closing && !fileBusy && !dragging && !quickActions.isBusy()
+                        && (featureStage == null || !featureStage.isShowing()
+                            || (recycleWindow != null && recycleWindow.acceptsPetDrop())),
+                this::setFileHover, this::recycleDroppedFiles);
 
         Scene scene = stage.getScene();
         scene.setOnKeyPressed(event -> {
@@ -195,6 +217,8 @@ final class DesktopPetController {
         if (closing) return; closing = true;
         radialMenu.closeImmediately();
         contextMenu.closeImmediately();
+        if (featureStage != null) featureStage.close();
+        fileWorker.shutdown();
         timer.stop();
         quickActions.close();
         inputService.close();
@@ -258,7 +282,7 @@ final class DesktopPetController {
             return;
         }
         primaryPressed = false;
-        inputService.setPetDragging(false);
+        inputService.setPetDragging(fileHover);
         canvas.setCursor(Cursor.OPEN_HAND);
         if (dragging) {
             long now = System.nanoTime();
@@ -343,13 +367,47 @@ final class DesktopPetController {
     private void updateMenuPause(boolean ignored) {
         speechBubble.hide();
         angerEffect.hide();
-        movement.setInteractionPaused(radialMenu.isShowing() || contextMenu.isShowing()
+        movement.setInteractionPaused(fileHover || fileBusy || radialMenu.isShowing() || contextMenu.isShowing()
                 || (featureStage != null && featureStage.isShowing()));
+    }
+
+    private void setFileHover(boolean hover) {
+        if (fileHover == hover) return;
+        fileHover = hover;
+        inputService.setPetDragging(hover || dragging);
+        if (hover) {
+            radialMenu.close(); contextMenu.close();
+            statusView.show("파일을 놓으면 휴지통으로 보내요.", false, "");
+        } else statusView.hide();
+        updateMenuPause(false);
+    }
+
+    private void drawFileDropOutline() {
+        var graphics = canvas.getGraphicsContext2D(); graphics.save();
+        graphics.setStroke(Color.web("#9EDAC7")); graphics.setLineWidth(2); graphics.setLineDashes(5, 4);
+        graphics.strokeRoundRect(2, 2, canvas.getWidth() - 4, canvas.getHeight() - 4, 10, 10); graphics.restore();
+    }
+
+    private void recycleDroppedFiles(java.util.List<java.nio.file.Path> files) {
+        if (closing || fileBusy) return;
+        fileBusy = true; updateMenuPause(false);
+        if (recycleWindow != null) recycleWindow.beginPetDrop();
+        quickActions.report("파일을 휴지통으로 보내는 중…");
+        CompletableFuture.supplyAsync(() -> {
+            try { return recycleBin.recycle(files); } catch (Exception failure) { throw new CompletionException(failure); }
+        }, fileWorker).whenComplete((result, failure) -> Platform.runLater(() -> {
+            if (closing) return;
+            fileBusy = false; updateMenuPause(false);
+            String message = failure == null ? result.summary() : "휴지통으로 보내지 못했어요: " + failureMessage(failure);
+            if (recycleWindow != null) recycleWindow.finishPetDrop(message);
+            quickActions.report(message);
+        }));
     }
 
     private void openFeatureWindow(RadialMenuAction action) {
         speechBubble.hide();
         angerEffect.hide();
+        if (fileBusy) { quickActions.report("파일 이동이 끝나면 메뉴를 열어 주세요."); return; }
         if (featureStage != null && featureStage.isShowing()) {
             featureStage.toFront();
             quickActions.report("열려 있는 창을 먼저 사용하거나 닫아 주세요.");
@@ -359,7 +417,17 @@ final class DesktopPetController {
         radialMenu.close();
         contextMenu.close();
         stage.setAlwaysOnTop(false);
+        setFileHover(false);
         movement.setInteractionPaused(true);
+        if (action == RadialMenuAction.SEARCH) {
+            SearchWindow window = new SearchWindow(stage, webSearch, this::featureClosed);
+            featureStage = window.getStage(); window.show(); return;
+        }
+        if (action == RadialMenuAction.RECYCLE_BIN) {
+            RecycleBinWindow window = new RecycleBinWindow(stage, recycleBin, this::featureClosed);
+            recycleWindow = window;
+            featureStage = window.getStage(); window.show(); return;
+        }
         if (action == RadialMenuAction.QUICK_ACTIONS) {
             QuickActionsWindow window = new QuickActionsWindow(stage, this::featureClosed, quickActions);
             featureStage = window.getStage(); window.show();
@@ -389,6 +457,7 @@ final class DesktopPetController {
 
     private void featureClosed() {
         featureStage = null;
+        recycleWindow = null;
         if (closing) return;
         stage.setAlwaysOnTop(programSettings.alwaysOnTop());
         stage.toFront();
@@ -461,7 +530,7 @@ final class DesktopPetController {
     }
 
     private void updateSpeech(long now) {
-        boolean busy = !programSettings.speechEnabled() || closing || primaryPressed || dragging || radialMenu.isShowing() || contextMenu.isShowing()
+        boolean busy = !programSettings.speechEnabled() || closing || primaryPressed || dragging || fileHover || fileBusy || radialMenu.isShowing() || contextMenu.isShowing()
                 || (featureStage != null && featureStage.isShowing()) || quickActions.isBusy() || statusView.isShowing()
                 || pet.getState() == PetState.FALLING || pet.getState() == PetState.WALL_HIT
                 || pet.getState() == PetState.LANDING || pet.getState() == PetState.SLEEPING;
@@ -469,7 +538,7 @@ final class DesktopPetController {
     }
 
     private void updateAngerEffect() {
-        boolean blocked = closing || primaryPressed || dragging || radialMenu.isShowing() || contextMenu.isShowing()
+        boolean blocked = closing || primaryPressed || dragging || fileHover || fileBusy || radialMenu.isShowing() || contextMenu.isShowing()
                 || (featureStage != null && featureStage.isShowing()) || quickActions.isBusy() || statusView.isShowing();
         angerEffect.update(anger.update(pet.getState(), movement.getLandingProgress(), blocked), renderer.getSpriteBounds());
     }

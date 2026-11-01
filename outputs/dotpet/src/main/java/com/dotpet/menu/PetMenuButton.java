@@ -11,7 +11,7 @@ import javafx.scene.paint.Color;
 
 /** A readable icon card with a visible action name and a short explanation. */
 final class PetMenuButton {
-    enum Icon { QUICK, KEYS, PALETTE, SETTINGS, WALK, PAUSE, GRAVITY, PIN, EXIT }
+    enum Icon { QUICK, SEARCH, TRASH, KEYS, PALETTE, SETTINGS, WALK, PAUSE, GRAVITY, PIN, EXIT }
 
     private PetMenuButton() { }
 
@@ -47,6 +47,16 @@ final class PetMenuButton {
         g.setStroke(Color.web("#BCD8F4"));
         g.setFill(Color.web("#9AE66E"));
         switch (icon) {
+            case SEARCH -> {
+                g.setStroke(Color.web("#96D8EB")); g.setLineWidth(3);
+                g.strokeOval(3, 2, 16, 16); g.strokeLine(17, 17, 26, 26);
+                g.setStroke(Color.web("#E7F6FF")); g.setLineWidth(2); g.strokeArc(6, 5, 10, 10, 80, 75, javafx.scene.shape.ArcType.OPEN);
+            }
+            case TRASH -> {
+                g.setFill(Color.web("#9EDAC7")); g.fillRoundRect(5, 8, 18, 18, 3, 3); g.fillRoundRect(3, 4, 22, 3, 2, 2);
+                g.fillRoundRect(10, 1, 8, 4, 2, 2); g.setStroke(Color.web("#335A53")); g.setLineWidth(2);
+                g.strokeLine(11, 12, 11, 22); g.strokeLine(17, 12, 17, 22);
+            }
             case QUICK -> {
                 g.setFill(Color.web("#FFD16F"));
                 g.fillPolygon(new double[] {16, 5, 13, 10, 24, 16}, new double[] {1, 16, 16, 27, 10, 10}, 6);

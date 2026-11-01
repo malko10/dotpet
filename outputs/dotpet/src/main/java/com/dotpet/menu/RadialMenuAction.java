@@ -1,8 +1,10 @@
 package com.dotpet.menu;
 
-/** The four top-level actions shown around the desktop pet. */
+/** The top-level actions shown around the desktop pet. */
 public enum RadialMenuAction {
     QUICK_ACTIONS("빠른 작업", "⚡"),
+    SEARCH("검색", "⌕"),
+    RECYCLE_BIN("휴지통", "♲"),
     INPUT_SETTINGS("키 설정", "⌨"),
     PET_CUSTOMIZATION("캐릭터 꾸미기", "✦"),
     PROGRAM_SETTINGS("프로그램 설정", "⚙");

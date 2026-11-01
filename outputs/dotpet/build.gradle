@@ -4,7 +4,7 @@ plugins {
 }
 
 group = 'com.dotpet'
-version = '0.5.1'
+version = '0.6.0'
 
 repositories {
     mavenCentral()
@@ -32,4 +32,20 @@ javafx {
 
 application {
     mainClass = 'com.dotpet.Main'
+}
+
+tasks.register('verifyDesktopUtilities', JavaExec) {
+    dependsOn tasks.named('testClasses')
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.dotpet.actions.DesktopUtilitiesCheck'
+    args layout.buildDirectory.dir('utility-checks').get().asFile.absolutePath
+}
+
+// This main-based check runs above, without a JUnit dependency or test discovery.
+tasks.named('test') {
+    exclude 'com/dotpet/actions/DesktopUtilitiesCheck*.class'
+}
+
+tasks.named('check') {
+    dependsOn tasks.named('verifyDesktopUtilities')
 }

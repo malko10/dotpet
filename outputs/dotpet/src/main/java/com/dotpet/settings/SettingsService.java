@@ -13,8 +13,8 @@ import java.util.Properties;
 /** Configured preferences only; observed clipboard/input contents are never stored. */
 public final class SettingsService {
     private final Path directory;
-    private String loadNotice = "", programLoadNotice = "";
-    private boolean corruptInput, corruptProgram;
+    private String loadNotice = "", programLoadNotice = "", searchLoadNotice = "";
+    private boolean corruptInput, corruptProgram, corruptSearch;
 
     public SettingsService() {
         this(System.getProperty("dotpet.dataDir") != null ? Path.of(System.getProperty("dotpet.dataDir"))
@@ -24,6 +24,38 @@ public final class SettingsService {
     public Path getDirectory() { return directory; }
     public String getLoadNotice() { return loadNotice; }
     public String getProgramLoadNotice() { return programLoadNotice; }
+    public String getSearchLoadNotice() { return searchLoadNotice; }
+
+    public SearchSettings loadSearchSettings() {
+        Path file = directory.resolve("search.properties");
+        if (!Files.exists(file)) return SearchSettings.defaults();
+        try { return parseSearch(readProperties(file)); }
+        catch (IOException | RuntimeException failure) {
+            corruptSearch = true;
+            try {
+                SearchSettings recovered = parseSearch(readProperties(directory.resolve("search.properties.bak")));
+                searchLoadNotice = "검색 설정의 백업을 복원했어요.";
+                return recovered;
+            } catch (IOException | RuntimeException unavailable) {
+                searchLoadNotice = "검색 설정을 읽지 못해 기본값으로 열었어요. 기존 파일은 보존합니다.";
+                return SearchSettings.defaults();
+            }
+        }
+    }
+
+    private static SearchSettings parseSearch(Properties values) {
+        return new SearchSettings(com.dotpet.actions.SearchEngine.valueOf(values.getProperty("engine", "GOOGLE")),
+                values.getProperty("browserExecutable", ""));
+    }
+
+    public synchronized void saveSearchSettings(SearchSettings settings) throws IOException {
+        Properties values = new Properties();
+        values.setProperty("engine", settings.engine().name());
+        values.setProperty("browserExecutable", settings.browserExecutable());
+        if (corruptSearch) AtomicFiles.preserveCorrupt(directory.resolve("search.properties"));
+        AtomicFiles.writeProperties(directory.resolve("search.properties"), values, !corruptSearch);
+        corruptSearch = false;
+    }
 
     public InputSettings loadInputSettings() {
         Path file = directory.resolve("input.properties");

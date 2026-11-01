@@ -2,6 +2,16 @@
 
 실제 사용 안내는 [사용 설명서](../README.md)에 있습니다. 아래는 변경 내역과 개발 환경에서의 검증 기록입니다.
 
+## 0.6.0 검색·파일 휴지통
+
+- 좌클릭 부채에 `SEARCH`·`RECYCLE_BIN`을 추가했습니다. 기존 `PetMenuLayout`은 6개 버튼에도 같은 경계 계산을 사용하며 모서리에서 원호를 안쪽으로 줄입니다. 펼침/접기·펫 가림 방지·상호작용 정지는 유지했습니다.
+- `SearchWindow`·`WebSearchService`·`SearchEngine`은 Google/네이버/Bing/DuckDuckGo의 고정 HTTPS 주소에 UTF-8 인코딩한 검색어를 전달합니다. 기본 브라우저는 `Desktop.browse`, 직접 선택한 설치 브라우저는 인수 배열의 `ProcessBuilder`로 실행하며 셸 명령을 만들지 않습니다. 브라우저 열기와 설정 IO는 작업 스레드에서 수행하고 검색어는 저장하지 않습니다. `SettingsService`의 별도 `search.properties`에 검색엔진/브라우저 경로만 원자적으로 저장하며 손상된 파일과 백업을 보존합니다.
+- `PetFileDropTarget`은 JavaFX 파일 드롭만 받고 `DesktopPetController`가 별도 작업 스레드에서 `RecycleBinService`를 호출합니다. 파일 호버와 처리 중 이동/수다/제스처를 멈추고 초록 테두리와 상태 메시지를 표시합니다. 파일 드래그 소스에는 COPY 수락을 알려 비동기 실패 시 소스가 원본을 지우지 않게 하며 실제 파일 처리는 앱이 담당합니다. 일반 로컬 고정 드라이브 파일, 중복 제외, 1~256개를 지원하고 폴더/심볼릭 링크/네트워크/이동식 드라이브를 거부합니다. 일부 실패는 성공 개수와 함께 보고합니다.
+- `WindowsRecycleBin`은 기존 JNA 5.19.1로 Windows [IFileOperation](https://learn.microsoft.com/en-us/windows/win32/api/shobjidl_core/nn-shobjidl_core-ifileoperation)을 STA 작업 스레드에 바인딩합니다. [SetOperationFlags](https://learn.microsoft.com/en-us/windows/win32/api/shobjidl_core/nf-shobjidl_core-ifileoperation-setoperationflags)의 `FOFX_RECYCLEONDELETE`·`FOFX_ADDUNDORECORD`·`FOFX_EARLYFAILURE`를 사용하고, `IFileOperationProgressSink.PreDeleteItem`은 재활용 표시가 없는 삭제를 중단합니다. HRESULT/중단 플래그와 `PostDeleteItem`의 새 항목도 확인하며 일반 삭제 재시도나 자동 권한 상승을 하지 않습니다. 파일 연관 요소를 함께 삭제하지 않도록 `FOF_NO_CONNECTED_ELEMENTS`를 지정했습니다.
+- `RecycleBinWindow`는 실제 Windows 휴지통의 항목 수/크기, 파일 선택, 열기, 새로고침과 비우기를 연결합니다. [SHQueryRecycleBinW](https://learn.microsoft.com/en-us/windows/win32/api/shellapi/nf-shellapi-shqueryrecyclebinw)와 [SHEmptyRecycleBinW](https://learn.microsoft.com/en-us/windows/win32/api/shellapi/nf-shellapi-shemptyrecyclebinw)를 사용하며 비우기는 전체 Windows 휴지통에 영향을 준다는 확인창을 별도로 표시합니다. 취소가 기본 버튼입니다. 확인/처리 중 파일 드롭과 중복 비우기를 막고, 이 창을 열어 둔 상태의 펫 드롭 결과도 새로 조회합니다. 종료할 때 이미 수락한 작업은 마치고 새 작업을 받지 않습니다.
+
+검증: JDK 21 직접 컴파일, 실제 Windows Shell 조회 및 직접 생성한 임시 파일 하나의 재활용, 중복/폴더/없는 파일 거부, 일반 삭제 방지 콜백을 검사했습니다. 실제 사용자의 휴지통을 비우는 검사는 하지 않았습니다. 실제 JavaFX 창의 검색 Enter·한글/기호·브라우저 설정 복원·잘못된 경로 오류, 비우기 확인/취소/취소 기본값, 파일 드롭 핸들러의 호버/이탈/수락·동시 작업 차단·UI 응답·휴지통 창 연동은 외부 실행 경계만 모의로 바꾸어 검사하고 스냅샷을 확인했습니다. 800×600 포함 화면 원점/모서리/펫 크기/3·4·6 버튼 조합의 애니메이션 경로 51,480건을 통과했습니다. `DesktopUtilitiesCheck` 62건은 검색 인코딩·실행 경로 검증·설정/백업/검색어 비저장·삭제 방지/확인 거부를 검사하며 Gradle `check`에 연결했습니다. 로컬 Gradle은 기존 Windows 루프백 연결 오류로 실행되지 않아 배포 시 GitHub Windows 빌드에서 확인합니다. EXE 직접 실행은 기존 Windows 앱 제어 정책 제한으로 확인하지 않습니다.
+
 ## 0.5.1 메뉴 접기·머리 장식·수다 확장
 
 - `PetMenuPopup`이 좌/우 메뉴의 자동 닫힘·Esc·바깥 클릭·선택을 같은 접기 모션으로 처리합니다. `PetMenuFan`은 현재 펼침 정도에서 역방향으로 이어 가며, 접는 중 버튼은 입력을 받지 않고 모션이 끝난 뒤 선택 기능을 실행합니다. 펫 이동도 실제 닫힘까지 멈춥니다. 종료 시에는 즉시 팝업을 정리합니다.

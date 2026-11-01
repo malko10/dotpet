@@ -47,5 +47,7 @@ final class DesktopStatusView implements AutoCloseable {
 
     boolean isShowing() { return popup.isShowing(); }
 
-    @Override public void close() { hide.stop(); popup.hide(); }
+    void hide() { hide.stop(); popup.hide(); }
+
+    @Override public void close() { hide(); }
 }
