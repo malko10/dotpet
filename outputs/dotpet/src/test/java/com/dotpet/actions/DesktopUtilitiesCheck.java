@@ -62,7 +62,8 @@ public final class DesktopUtilitiesCheck {
         finally {Thread.interrupted();}
         rejects(() -> new RecycleBinService().empty(false));
         verifyAutoEmpty(root.resolve("recycle"));
-        System.out.println("Passed " + checks + " search encoding/preferences/backup/privacy and recycle/auto-empty checks; no external actions performed.");
+        verifyProfileDeletion(root.resolve("profiles"));
+        System.out.println("Passed " + checks + " search, recycle/auto-empty and profile deletion checks; no external actions performed.");
     }
 
     private static void verifyAutoEmpty(Path root) throws Exception {
@@ -106,5 +107,36 @@ public final class DesktopUtilitiesCheck {
         try (var entries = Files.list(root)) {
             require(entries.anyMatch(p -> p.getFileName().toString().contains(".corrupt-")), "Corrupt recycle settings not preserved");
         }
+    }
+
+    private static void verifyProfileDeletion(Path root) throws Exception {
+        var repository = new com.dotpet.storage.PetProfileRepository(root);
+        var animations = com.dotpet.animation.DefaultPetAnimations.get();
+        var profile = new com.dotpet.customization.PetCustomization("user-delete", "삭제할 펫", animations,
+                1, false, javafx.scene.paint.Color.WHITE);
+        repository.save(profile); repository.save(profile);
+        var other = new com.dotpet.customization.PetCustomization("user-keep", "남길 펫", animations,
+                1.5, true, javafx.scene.paint.Color.PINK);
+        repository.save(other);
+        byte[] keptProject = Files.readAllBytes(root.resolve("user-keep.dotpet"));
+        byte[] keptMetadata = Files.readAllBytes(root.resolve("user-keep.properties"));
+        Path outside = root.resolveSibling("outside.dotpet"); Files.writeString(outside, "keep");
+        for (String id : java.util.List.of("builtin", "../outside", "..\\outside", root.resolve("user-keep").toString(), "", "user.delete"))
+            rejects(() -> repository.delete(id));
+        require(repository.loadProfiles().size() == 2 && Files.readString(outside).equals("keep"), "Invalid id changed profiles/outside file");
+        Path original = root.resolveSibling("import-source.dotpet"); Files.copy(root.resolve("user-delete.dotpet"), original);
+        repository.delete(profile.id());
+        for (String suffix : java.util.List.of(".dotpet", ".dotpet.bak", ".properties", ".properties.bak"))
+            require(!Files.exists(root.resolve(profile.id() + suffix)), "Deleted entry or backup remained: " + suffix);
+        require(Files.exists(original), "Imported source was deleted");
+        var reloaded = new com.dotpet.storage.PetProfileRepository(root).loadProfiles();
+        require(reloaded.size() == 1 && reloaded.getFirst().id().equals(other.id()) && reloaded.getFirst().name().equals(other.name()), "Deleted entry returned after reload");
+        require(java.util.Arrays.equals(keptProject, Files.readAllBytes(root.resolve("user-keep.dotpet")))
+                && java.util.Arrays.equals(keptMetadata, Files.readAllBytes(root.resolve("user-keep.properties"))), "Delete changed another profile");
+        repository.delete(profile.id()); // An unsaved/new entry also has nothing to remove from disk.
+        require(repository.loadProfiles().size() == 1, "Repeated/missing deletion affected another profile");
+        Path blocker = root.resolve("user-keep.properties.bak"); Files.createDirectory(blocker);
+        rejects(() -> repository.delete(other.id()));
+        require(Files.isRegularFile(root.resolve("user-keep.dotpet")) && Files.isRegularFile(root.resolve("user-keep.properties")), "Preflight error changed existing entry");
     }
 }

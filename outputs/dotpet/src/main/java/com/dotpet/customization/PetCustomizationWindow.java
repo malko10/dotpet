@@ -27,6 +27,8 @@ import javafx.scene.canvas.Canvas;
 import javafx.scene.canvas.GraphicsContext;
 import javafx.scene.control.Alert;
 import javafx.scene.control.Button;
+import javafx.scene.control.ButtonBar;
+import javafx.scene.control.ButtonType;
 import javafx.scene.control.CheckBox;
 import javafx.scene.control.ColorPicker;
 import javafx.scene.control.ComboBox;
@@ -53,6 +55,7 @@ public final class PetCustomizationWindow {
     private final Stage stage = new Stage();
     private final PetProfileRepository repository = new PetProfileRepository();
     private final ComboBox<PetCustomization> profilePicker = new ComboBox<>();
+    private final Button deleteButton = button("외형 삭제");
     private final TextField nameField = new TextField();
     private final Slider sizeSlider = new Slider(0.5, 2.0, 1.0);
     private final CheckBox flipCheck = new CheckBox("좌우 반전");
@@ -68,9 +71,11 @@ public final class PetCustomizationWindow {
     private final Consumer<PetCustomization> applyHandler;
     private final Runnable onHidden;
     private PetCustomization selected;
+    private String appliedProfileId;
+    private int openEditors;
     private boolean updating;
     private boolean recolorBody;
-    private boolean closed, loadingStarted;
+    private boolean closed, loadingStarted, deleting;
     private final ExecutorService files = Executors.newSingleThreadExecutor(task -> new Thread(task,"dotpet-profile-files"));
 
     public PetCustomizationWindow(Stage owner, Map<PetState, Animation> builtInAnimations,
@@ -89,10 +94,12 @@ public final class PetCustomizationWindow {
         if(active!=null)active=active.resolveBuiltIn(builtInAnimations);
         if(active!=null){if(active.id().equals("builtin"))profiles.set(0,active);else profiles.add(active);}
         selected = active==null?profiles.getFirst():active;
+        appliedProfileId = selected.id();
         stage.setScene(new Scene(createContent(), 840,
                 Math.min(700, javafx.stage.Screen.getPrimary().getVisualBounds().getHeight() - 50), Color.web("#111824")));
         stage.setMinWidth(800);
         stage.setMinHeight(540);
+        stage.setOnCloseRequest(event -> { if (deleting) event.consume(); });
         stage.setOnHidden(event -> {closed=true;files.shutdown();onHidden.run();});
         loadSelectedProfile();
     }
@@ -108,6 +115,7 @@ public final class PetCustomizationWindow {
         root.setStyle("-fx-background-color: #111824; -fx-padding: 18;");
 
         profilePicker.getItems().setAll(profiles);
+        profilePicker.setId("profile-picker");
         profilePicker.setConverter(new StringConverter<>() {
             @Override public String toString(PetCustomization profile) { return profile == null ? "" : profile.name(); }
             @Override public PetCustomization fromString(String value) { return null; }
@@ -127,7 +135,11 @@ public final class PetCustomizationWindow {
             registerNewProfile(new PetAnimationProject(blank).toAnimations());
             openEditor();
         });
-        HBox selectionRow = new HBox(9, new Label("캐릭터"), profilePicker, createButton, importButton);
+        deleteButton.setId("delete-profile");
+        deleteButton.setMinWidth(javafx.scene.layout.Region.USE_PREF_SIZE);
+        deleteButton.setStyle("-fx-background-color: #B63843; -fx-text-fill: #FFFFFF; -fx-border-color: #EC7E86; -fx-background-radius: 5; -fx-border-radius: 5;");
+        deleteButton.setOnAction(event -> confirmDelete());
+        HBox selectionRow = new HBox(9, new Label("캐릭터"), profilePicker, createButton, importButton, deleteButton);
         ((Label) selectionRow.getChildren().getFirst()).setStyle(labelStyle());
         HBox.setHgrow(profilePicker, Priority.ALWAYS);
 
@@ -162,6 +174,7 @@ public final class PetCustomizationWindow {
         original.setOnAction(event -> { recolorBody = false; tintPicker.setValue(Color.WHITE); drawPreview(); });
         colorPresets.getChildren().add(original);
         nameField.setPromptText("저장할 캐릭터 이름");
+        nameField.setId("profile-name");
 
         VBox equipment = new VBox(7);
         Label equipmentTitle = new Label("머리 장식 · 하나를 골라 씌우세요"); equipmentTitle.setStyle(labelStyle());
@@ -199,6 +212,7 @@ public final class PetCustomizationWindow {
         Button edit = button("픽셀 / 애니메이션 편집");
         edit.setOnAction(event -> openEditor());
         Button save = button("캐릭터 저장");
+        save.setId("save-profile");
         save.setOnAction(event -> saveProfile());
         Button apply = button("펫에 적용 후 닫기");
         apply.setId("apply-appearance");
@@ -265,6 +279,46 @@ public final class PetCustomizationWindow {
             colorPresets.setVisible(slime); colorPresets.setManaged(slime);
         } finally { updating = false; }
         drawPreview();
+        updateDeleteButton();
+    }
+
+    private void updateDeleteButton() {
+        deleteButton.setDisable(selected == null || selected.id().equals("builtin") || openEditors > 0);
+        deleteButton.setTooltip(new javafx.scene.control.Tooltip(openEditors > 0 ? "편집 창을 닫은 뒤 삭제하세요."
+                : selected == null || selected.id().equals("builtin") ? "기본 슬라임은 삭제할 수 없어요." : "선택한 사용자 외형을 삭제합니다."));
+    }
+
+    private void confirmDelete() {
+        if (deleteButton.isDisabled() || selected == null) return;
+        PetCustomization target = selected;
+        boolean isApplied = target.id().equals(appliedProfileId);
+        ButtonType erase = new ButtonType("삭제", ButtonBar.ButtonData.OK_DONE);
+        Alert confirmation = new Alert(Alert.AlertType.CONFIRMATION,
+                "목록과 도트펫에 저장한 이 외형을 삭제합니다. 삭제 후 되돌릴 수 없습니다."
+                + (isApplied ? "\n현재 적용 중인 외형이므로 기본 슬라임으로 바뀝니다." : ""), erase, ButtonType.CANCEL);
+        confirmation.initOwner(stage); confirmation.setTitle("외형 삭제");
+        confirmation.setHeaderText("‘" + target.name() + "’ 외형을 삭제할까요?");
+        confirmation.getDialogPane().setId("delete-profile-confirmation");
+        Button eraseButton = (Button) confirmation.getDialogPane().lookupButton(erase);
+        eraseButton.setId("confirm-delete-profile"); eraseButton.setDefaultButton(false);
+        eraseButton.setStyle(deleteButton.getStyle());
+        Button cancelButton = (Button) confirmation.getDialogPane().lookupButton(ButtonType.CANCEL);
+        cancelButton.setId("cancel-delete-profile"); cancelButton.setDefaultButton(true);
+        confirmation.setOnShown(event -> cancelButton.requestFocus());
+        confirmation.setOnHidden(event -> {
+            if (closed || confirmation.getResult() != erase) return;
+            deleting = true;
+            runFileTask("외형 삭제", () -> { repository.delete(target.id()); return target; }, removed -> {
+                profiles.removeIf(profile -> profile.id().equals(removed.id()));
+                selected = profiles.getFirst();
+                updating = true;
+                try { profilePicker.getItems().setAll(profiles); } finally { updating = false; }
+                loadSelectedProfile();
+                if (isApplied) { applyHandler.accept(selected); appliedProfileId = selected.id(); }
+                status.setText(isApplied ? "외형을 삭제하고 기본 슬라임을 적용했어요." : "외형을 삭제했어요.");
+            });
+        });
+        confirmation.show();
     }
 
     private void drawPreview() {
@@ -331,6 +385,7 @@ public final class PetCustomizationWindow {
             profiles.add(selected);
             profilePicker.getItems().setAll(profiles);
             profilePicker.setValue(selected);
+            updateDeleteButton();
             status.setText("캐릭터를 사용자 폴더에 저장했습니다.");
         });
     }
@@ -347,8 +402,11 @@ public final class PetCustomizationWindow {
                     updating=true;profilePicker.getItems().setAll(profiles);profilePicker.setValue(selected);updating=false;
                     drawPreview();
                     applyHandler.accept(selected);
+                    appliedProfileId = selected.id();
+                    updateDeleteButton();
                     status.setText("편집한 펫은 다음 실행에도 복원됩니다. 목록에 보관하려면 캐릭터 저장을 누르세요.");
-                }, () -> stage.toFront(), this::registerNewProfile);
+                }, () -> { openEditors--; updateDeleteButton(); stage.toFront(); }, this::registerNewProfile);
+        openEditors++; updateDeleteButton();
         editor.show();
     }
 
@@ -395,6 +453,7 @@ public final class PetCustomizationWindow {
         stage.getScene().getRoot().setDisable(true);status.setText(operation+" 중…");
         CompletableFuture.supplyAsync(() -> {try{return task.call();}catch(Exception failure){throw new CompletionException(failure);}},files)
                 .whenComplete((result,failure) -> Platform.runLater(() -> {
+                    deleting = false;
                     if(closed)return;stage.getScene().getRoot().setDisable(false);
                     if(failure!=null){Throwable cause=failure;while(cause.getCause()!=null)cause=cause.getCause();showError(operation+" 실패",new IOException(cause.getMessage(),cause));}
                     else done.accept(result);

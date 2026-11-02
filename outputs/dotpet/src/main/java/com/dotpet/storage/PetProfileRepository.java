@@ -9,6 +9,7 @@ import com.dotpet.pet.PetState;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.LinkOption;
 import java.util.ArrayList;
 import java.util.EnumMap;
 import java.util.List;
@@ -83,6 +84,21 @@ public final class PetProfileRepository {
 
     public Path getDirectory() { return directory; }
     public String getLoadNotice() { return loadNotice; }
+
+    /** Deletes only this library entry and its backups, never an imported source file. */
+    public void delete(String id) throws IOException {
+        if (id == null || id.equals("builtin") || !id.matches("[a-z0-9가-힣_-]+"))
+            throw new IllegalArgumentException("삭제할 사용자 캐릭터를 선택하세요.");
+        Path root = directory.toAbsolutePath().normalize();
+        List<Path> targets = List.of(".dotpet.bak", ".properties.bak", ".properties", ".dotpet").stream()
+                .map(suffix -> root.resolve(id + suffix).normalize()).toList();
+        for (Path target : targets) {
+            if (!target.getParent().equals(root)) throw new IOException("캐릭터 저장 폴더 밖의 파일은 삭제할 수 없습니다.");
+            if (Files.exists(target, LinkOption.NOFOLLOW_LINKS) && !Files.isRegularFile(target, LinkOption.NOFOLLOW_LINKS))
+                throw new IOException("캐릭터 파일 형식을 확인하세요: " + target.getFileName());
+        }
+        for (Path target : targets) Files.deleteIfExists(target);
+    }
 
     private static String sanitize(String text) {
         String safe = text.toLowerCase().replaceAll("[^a-z0-9가-힣_-]+", "-").replaceAll("^-|-$", "");

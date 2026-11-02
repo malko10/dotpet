@@ -1,7 +1,7 @@
 param(
     [string] $JavaHome = $env:JAVA_HOME,
-    [string] $Destination = (Join-Path $PSScriptRoot '..\DoTPet-Windows-v0.6.1'),
-    [string] $AppVersion = '0.6.1'
+    [string] $Destination = (Join-Path $PSScriptRoot '..\DoTPet-Windows-v0.6.2'),
+    [string] $AppVersion = '0.6.2'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -95,6 +95,9 @@ Windows 기본 브라우저를 사용합니다. 검색엔진은 다음 검색에
 체크한 뒤 펫에 파일을 놓으면 정상 이동 후 기존 항목까지 휴지통 전체를 별도 확인 없이 영구 삭제합니다.
 체크만 해서는 비우지 않습니다. 일부 파일 이동 실패 시에는 자동 비우기를 건너뜁니다.
 복원이나 직접 비우기는 Windows 휴지통에서 하세요. 자동 비우기로 삭제한 항목은 복원할 수 없습니다.
+꾸미기 → 캐릭터 선택 → 빨간 외형 삭제 버튼 → 삭제 확인으로 사용자 외형을 삭제할 수 있습니다.
+적용 중인 외형을 삭제하면 기본 슬라임으로 전환됩니다. 기본 슬라임은 삭제할 수 없습니다.
+취소/Esc로 삭제를 취소할 수 있으며, 외부에서 가져온 원본 프로젝트 파일은 지우지 않습니다.
 꾸미기 → 머리 장식에서 왕관·실크 모자·마법사 모자·파티 모자·밀짚모자·베레모·비니·꽃 화관을 고르세요.
 마우스 드래그: 펫 이동 및 던지기
 화면 높이의 절반 정도 이상에서 떨어지면 넘어졌다 일어납니다.
