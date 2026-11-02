@@ -14,7 +14,22 @@ import java.util.Properties;
 public final class SettingsService {
     private final Path directory;
     private String loadNotice = "", programLoadNotice = "", searchLoadNotice = "";
-    private boolean corruptInput, corruptProgram, corruptSearch;
+    private boolean corruptInput, corruptProgram, corruptSearch, corruptRecycle;
+
+    /** Never recover an older enabled value for a destructive preference. */
+    public synchronized boolean loadRecycleAutoEmpty() {
+        Path file = directory.resolve("recycle.properties");
+        if (!Files.exists(file)) return false;
+        try { return flag(readProperties(file), "autoEmpty", false); }
+        catch (IOException | RuntimeException failure) { corruptRecycle = true; return false; }
+    }
+
+    public synchronized void saveRecycleAutoEmpty(boolean enabled) throws IOException {
+        Properties values = new Properties(); values.setProperty("autoEmpty", Boolean.toString(enabled));
+        Path file = directory.resolve("recycle.properties");
+        if (corruptRecycle) AtomicFiles.preserveCorrupt(file);
+        AtomicFiles.writeProperties(file, values, !corruptRecycle); corruptRecycle = false;
+    }
 
     public SettingsService() {
         this(System.getProperty("dotpet.dataDir") != null ? Path.of(System.getProperty("dotpet.dataDir"))
@@ -44,14 +59,12 @@ public final class SettingsService {
     }
 
     private static SearchSettings parseSearch(Properties values) {
-        return new SearchSettings(com.dotpet.actions.SearchEngine.valueOf(values.getProperty("engine", "GOOGLE")),
-                values.getProperty("browserExecutable", ""));
+        return new SearchSettings(com.dotpet.actions.SearchEngine.valueOf(values.getProperty("engine", "GOOGLE")));
     }
 
     public synchronized void saveSearchSettings(SearchSettings settings) throws IOException {
         Properties values = new Properties();
         values.setProperty("engine", settings.engine().name());
-        values.setProperty("browserExecutable", settings.browserExecutable());
         if (corruptSearch) AtomicFiles.preserveCorrupt(directory.resolve("search.properties"));
         AtomicFiles.writeProperties(directory.resolve("search.properties"), values, !corruptSearch);
         corruptSearch = false;

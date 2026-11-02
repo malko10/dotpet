@@ -394,11 +394,11 @@ final class DesktopPetController {
         if (recycleWindow != null) recycleWindow.beginPetDrop();
         quickActions.report("파일을 휴지통으로 보내는 중…");
         CompletableFuture.supplyAsync(() -> {
-            try { return recycleBin.recycle(files); } catch (Exception failure) { throw new CompletionException(failure); }
+            try { return recycleBin.receivePetDrop(files); } catch (Exception failure) { throw new CompletionException(failure); }
         }, fileWorker).whenComplete((result, failure) -> Platform.runLater(() -> {
             if (closing) return;
             fileBusy = false; updateMenuPause(false);
-            String message = failure == null ? result.summary() : "휴지통으로 보내지 못했어요: " + failureMessage(failure);
+            String message = failure == null ? result : "휴지통 작업을 마치지 못했어요: " + failureMessage(failure);
             if (recycleWindow != null) recycleWindow.finishPetDrop(message);
             quickActions.report(message);
         }));

@@ -2,6 +2,7 @@ package com.dotpet.actions;
 
 import com.sun.jna.Platform;
 import com.sun.jna.platform.win32.Kernel32;
+import com.dotpet.settings.SettingsService;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
@@ -23,6 +24,25 @@ public class RecycleBinService {
         }
     }
     private final WindowsRecycleBin shell = new WindowsRecycleBin();
+    private final SettingsService settings;
+
+    public RecycleBinService() { this(new SettingsService()); }
+    public RecycleBinService(SettingsService settings) { this.settings = settings; }
+    public synchronized boolean isAutoEmpty() { return settings.loadRecycleAutoEmpty(); }
+    public synchronized void setAutoEmpty(boolean enabled) throws IOException { settings.saveRecycleAutoEmpty(enabled); }
+
+    /** Only an explicit successful pet drop can trigger the opt-in empty operation. */
+    public synchronized String receivePetDrop(List<Path> files) throws IOException {
+        boolean autoEmpty = isAutoEmpty();
+        Result result = recycle(files);
+        if (!autoEmpty) return result.summary();
+        if (result.moved() == 0 || !result.failures().isEmpty())
+            return result.summary() + " 이동하지 못한 파일이 있어 자동 비우기는 실행하지 않았어요.";
+        try { empty(true); return result.summary() + " Windows 휴지통 전체를 비웠어요."; }
+        catch (IOException | RuntimeException failure) {
+            return result.summary() + " 자동 비우기를 완료하지 못했어요: " + failure.getMessage();
+        }
+    }
 
     public synchronized BinInfo query() throws IOException { requireWindows(); return shell.query(); }
 
@@ -47,11 +67,6 @@ public class RecycleBinService {
     public synchronized void empty(boolean confirmed) throws IOException {
         if (!confirmed) throw new IllegalArgumentException("휴지통 비우기는 확인 후에만 실행할 수 있습니다.");
         requireWindows(); shell.empty();
-    }
-
-    public void open() throws IOException {
-        requireWindows();
-        new ProcessBuilder(Path.of(System.getenv("SystemRoot"), "explorer.exe").toString(), "shell:RecycleBinFolder").start();
     }
 
     private static void requireWindows() throws IOException {

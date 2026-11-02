@@ -36,18 +36,17 @@ public final class DesktopUtilitiesCheck {
         }
         SettingsService settings = new SettingsService(root.resolve("settings"));
         require(settings.loadSearchSettings().equals(SearchSettings.defaults()), "Fresh defaults failed");
-        AtomicReference<URI> opened = new AtomicReference<>(); AtomicReference<String> browser = new AtomicReference<>();
-        WebSearchService search = new WebSearchService(settings, (uri, executable) -> {opened.set(uri); browser.set(executable);});
-        Path fakeBrowser = root.resolve("브라우저 with spaces.exe"); Files.writeString(fakeBrowser, "test placeholder; never executed");
-        var prefs = new SearchSettings(SearchEngine.NAVER, fakeBrowser.toString());
+        AtomicReference<URI> opened = new AtomicReference<>();
+        WebSearchService search = new WebSearchService(settings, opened::set);
+        var prefs = new SearchSettings(SearchEngine.NAVER);
         search.search("private search 41", prefs);
-        require(opened.get().equals(SearchEngine.NAVER.searchUri("private search 41")) && browser.get().equals(fakeBrowser.toString()), "Wrong browser or URL");
+        require(opened.get().equals(SearchEngine.NAVER.searchUri("private search 41")), "Wrong URL");
         require(new SettingsService(settings.getDirectory()).loadSearchSettings().equals(prefs), "Search preferences not restored");
         require(!Files.readString(settings.getDirectory().resolve("search.properties")).contains("private search"), "Search text was persisted");
-        Path command = root.resolve("not-a-browser.cmd"); Files.writeString(command, "test");
-        rejects(() -> search.search("x", new SearchSettings(SearchEngine.GOOGLE, command.toString())));
-        rejects(() -> search.search("x", new SearchSettings(SearchEngine.GOOGLE, root.resolve("missing.exe").toString())));
-        rejects(() -> search.search("x", new SearchSettings(SearchEngine.GOOGLE, "relative.exe")));
+        Files.writeString(settings.getDirectory().resolve("search.properties"), "engine=NAVER\nbrowserExecutable=C:/old/browser.exe");
+        require(settings.loadSearchSettings().equals(prefs), "Legacy browser must be ignored");
+        search.search("migration", settings.loadSearchSettings());
+        require(!Files.readString(settings.getDirectory().resolve("search.properties")).contains("browserExecutable"), "Obsolete browser preference persisted");
         settings.saveSearchSettings(SearchSettings.defaults());
         Path file = settings.getDirectory().resolve("search.properties"); Files.writeString(file, "engine=NO_SUCH_ENGINE");
         SettingsService recover = new SettingsService(settings.getDirectory());
@@ -62,6 +61,50 @@ public final class DesktopUtilitiesCheck {
         try {Thread.currentThread().interrupt(); require(new WindowsRecycleBin.RecycleGuard().beforeDelete(0x80) < 0, "Interrupted operation not blocked");}
         finally {Thread.interrupted();}
         rejects(() -> new RecycleBinService().empty(false));
-        System.out.println("Passed " + checks + " search encoding/browser preference/backup/privacy and recycle-guard checks; no external actions performed.");
+        verifyAutoEmpty(root.resolve("recycle"));
+        System.out.println("Passed " + checks + " search encoding/preferences/backup/privacy and recycle/auto-empty checks; no external actions performed.");
+    }
+
+    private static void verifyAutoEmpty(Path root) throws Exception {
+        SettingsService settings = new SettingsService(root);
+        class FakeBin extends RecycleBinService {
+            int empties, moves;
+            boolean failEmpty, failMove;
+            Result next = new Result(1, java.util.List.of());
+            FakeBin() { super(settings); }
+            @Override public synchronized Result recycle(java.util.List<Path> files) throws IOException {
+                moves++; if (failMove) throw new IOException("move failed"); return next;
+            }
+            @Override public synchronized void empty(boolean confirmed) throws IOException {
+                require(confirmed, "Empty without enabled preference");
+                empties++; if (failEmpty) throw new IOException("empty failed");
+            }
+        }
+        FakeBin bin = new FakeBin();
+        var files = java.util.List.of(root.resolve("not-a-real-file"));
+        require(!bin.isAutoEmpty(), "Auto empty must default off");
+        bin.receivePetDrop(files); require(bin.empties == 0, "Default drop emptied bin");
+        bin.setAutoEmpty(true); require(bin.empties == 0, "Enabling emptied bin immediately");
+        require(new SettingsService(root).loadRecycleAutoEmpty(), "Enabled preference not restored");
+        bin.receivePetDrop(files); require(bin.empties == 1, "Successful drop did not empty bin");
+        bin.next = new RecycleBinService.Result(1, java.util.List.of(new RecycleBinService.Failure(files.getFirst(), "failed")));
+        bin.receivePetDrop(files); require(bin.empties == 1, "Partial failure emptied bin");
+        bin.next = new RecycleBinService.Result(0, java.util.List.of());
+        bin.receivePetDrop(files); require(bin.empties == 1, "Empty result emptied bin");
+        bin.failMove = true; rejects(() -> bin.receivePetDrop(files));
+        require(bin.empties == 1, "Thrown move failure emptied bin"); bin.failMove = false;
+        bin.next = new RecycleBinService.Result(1, java.util.List.of()); bin.failEmpty = true;
+        require(bin.receivePetDrop(files).contains("empty failed"), "Empty failure not reported");
+        bin.setAutoEmpty(false); bin.receivePetDrop(files);
+        require(bin.empties == 2, "Disabled option emptied bin");
+        // Never restore a stale enabled backup for an irreversible action.
+        Files.writeString(root.resolve("recycle.properties.bak"), "autoEmpty=true");
+        Files.writeString(root.resolve("recycle.properties"), "autoEmpty=broken");
+        require(!bin.isAutoEmpty(), "Corrupt setting enabled destructive behavior");
+        bin.receivePetDrop(files); require(bin.empties == 2, "Corrupt setting emptied bin");
+        bin.setAutoEmpty(false);
+        try (var entries = Files.list(root)) {
+            require(entries.anyMatch(p -> p.getFileName().toString().contains(".corrupt-")), "Corrupt recycle settings not preserved");
+        }
     }
 }
