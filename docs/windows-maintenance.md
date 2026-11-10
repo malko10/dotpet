@@ -2,8 +2,10 @@
 
 ## State on 2026-11-10
 
-- The public SignPath application is drafted, not submitted. The maintainer still
-  needs to enter their name/email and review the required agreements.
+- The public SignPath application was submitted on 2026-11-10. The maintainer
+  entered the required information and submitted it; the page displayed
+  **Form submitted — Thank you, we will be in touch soon.** Foundation review
+  and approval are still pending. No personal form fields are stored here.
 - Original code and slime artwork now have the maintainer-authorized MIT license.
 - No signing service, certificate, token or signature is available yet.
 - The v0.6.2 package audit found 117 valid native signatures and 9 unsigned files:

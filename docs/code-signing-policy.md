@@ -2,7 +2,7 @@
 
 ## Current status
 
-**Signing support is being requested; it has not been approved or activated.**
+**The application was submitted on 2026-11-10; signing has not been approved or activated.**
 Releases through v0.6.2 are unsigned. No release currently claims a SignPath
 signature or verified Smart App Control compatibility.
 
