@@ -17,7 +17,7 @@ $gitExe = (Get-Command git.exe -ErrorAction Stop).Source
 $stateDirectory = Join-Path $RepoRoot '.git\dotpet-sync'
 New-Item -ItemType Directory -Path $stateDirectory -Force | Out-Null
 $logPath = Join-Path $stateDirectory 'sync.log'
-$sourcePaths = @('.gitignore', '.gitattributes', 'AGENTS.md', 'README.md', '.github', 'docs', 'scripts',
+$sourcePaths = @('.gitignore', '.gitattributes', 'AGENTS.md', 'README.md', 'LICENSE', 'THIRD_PARTY_NOTICES.md', '.github', 'docs', 'scripts',
     'Start-GitHub-Sync.bat', 'Stop-GitHub-Sync.bat', 'GitHub-Sync-Status.bat', 'outputs/dotpet')
 
 function Write-SyncLog([string] $text) {

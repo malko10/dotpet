@@ -10,6 +10,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 concurrency:
   group: windows-${{ github.ref }}
@@ -18,7 +19,7 @@ concurrency:
 jobs:
   build:
     runs-on: windows-latest
-    timeout-minutes: 20
+    timeout-minutes: 45
     defaults:
       run:
         shell: pwsh
@@ -33,11 +34,57 @@ jobs:
         run: |
           .\gradlew.bat build --no-daemon
           if ($LASTEXITCODE -ne 0) { throw 'Gradle build failed.' }
+      - name: Verify fixed-folder updater
+        run: ..\..\scripts\tests\Test-DoTPetUpdate.ps1
+      - name: Read application version
+        id: version
+        run: |
+          $match = [regex]::Match((Get-Content build.gradle -Raw), "(?m)^version = '([0-9.]+)'\s*$")
+          if (!$match.Success) { throw 'Application version is missing.' }
+          if ($env:GITHUB_REF_TYPE -eq 'tag' -and $env:GITHUB_REF_NAME -ne "v$($match.Groups[1].Value)") { throw 'Tag and application versions do not match.' }
+          "value=$($match.Groups[1].Value)" >> $env:GITHUB_OUTPUT
       - name: Create portable Windows app
         run: |
           .\package-windows.ps1 -JavaHome $env:JAVA_HOME -Destination ..\DoTPet-Windows
           if ($LASTEXITCODE -ne 0) { throw 'Windows packaging failed.' }
           Compress-Archive -LiteralPath ..\DoTPet-Windows -DestinationPath ..\DoTPet-Windows.zip
+      - name: Upload artifact for signing
+        id: unsigned
+        if: startsWith(github.ref, 'refs/tags/v') && vars.SIGNPATH_ORGANIZATION_ID != ''
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: DoTPet-signing-input
+          path: outputs/DoTPet-Windows.zip
+          retention-days: 2
+          if-no-files-found: error
+      - name: Request manual SignPath approval
+        if: startsWith(github.ref, 'refs/tags/v') && vars.SIGNPATH_ORGANIZATION_ID != ''
+        uses: SignPath/github-action-submit-signing-request@f6d04783b4569d051e0c80105fe66e82819d0092 # v3
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: dotpet
+          signing-policy-slug: release-signing
+          artifact-configuration-slug: windows-portable
+          github-artifact-id: ${{ steps.unsigned.outputs.artifact-id }}
+          parameters: |
+            version: "${{ steps.version.outputs.value }}"
+          wait-for-completion: true
+          wait-for-completion-timeout-in-seconds: 1800
+          output-artifact-directory: signed
+      - name: Verify the entire signed package before publication
+        if: startsWith(github.ref, 'refs/tags/v') && vars.SIGNPATH_ORGANIZATION_ID != ''
+        run: |
+          Import-Module ..\..\scripts\DoTPet-Package.psm1 -Force
+          $zip = Join-Path $env:GITHUB_WORKSPACE 'signed\DoTPet-Windows.zip'
+          $digest = (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash
+          $app = Expand-DoTPetArchive -ZipPath $zip -ExpectedSha256 $digest -Destination ..\signed-verification
+          $report = @(Get-DoTPetSignatureReport -Directory $app)
+          $report | ConvertTo-Json | Set-Content ..\signature-report.json
+          if (@($report | Where-Object Status -ne 'Valid').Count) {
+            throw 'Native signature verification failed, including upstream DLLs. The signed release will not be published.'
+          }
+          Copy-Item -LiteralPath $zip -Destination ..\DoTPet-Windows.zip -Force
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: DoTPet-Windows

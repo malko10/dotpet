@@ -1,13 +1,14 @@
 @echo off
 setlocal
 chcp 65001 >nul
-set "DOTPET_EXE=%~dp0..\DoTPet-Windows-v0.6.2\DoTPet.exe"
+set "DOTPET_EXE=%LOCALAPPDATA%\Programs\DoTPet\DoTPet.exe"
 if not exist "%DOTPET_EXE%" goto missing_package
 start "" "%DOTPET_EXE%"
 exit /b 0
 
 :missing_package
-echo DoTPet-Windows-v0.6.2 폴더 안의 DoTPet.exe를 실행해 주세요.
-echo Java를 설치할 필요는 없습니다. 실행 파일과 app, runtime 폴더를 함께 두세요.
+echo 서명 검증을 통과한 DoT Pet을 아직 고정 폴더에 설치하지 않았습니다.
+echo 설치 대상: %LOCALAPPDATA%\Programs\DoTPet
+echo 기존 ZIP을 실행하는 경우 폴더 전체를 압축 해제한 뒤 DoTPet.exe를 실행하세요.
 pause
 exit /b 1

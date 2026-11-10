@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Initial EXE-only request; review/approval in SignPath is still required.
+     This deliberately does not sign third-party runtime/JAR/native files. -->
+<artifact-configuration xmlns="http://signpath.io/artifact-configuration/v1">
+  <parameters>
+    <parameter name="version" required="true" />
+  </parameters>
+  <zip-file>
+    <zip-file path="DoTPet-Windows.zip">
+      <pe-file path="DoTPet-Windows/DoTPet.exe" product-name="DoTPet" product-version="${version}">
+        <authenticode-sign />
+      </pe-file>
+    </zip-file>
+  </zip-file>
+</artifact-configuration>

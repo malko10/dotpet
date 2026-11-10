@@ -1,4 +1,4 @@
-param(
+﻿param(
     [string] $JavaHome = $env:JAVA_HOME,
     [string] $Destination = (Join-Path $PSScriptRoot '..\DoTPet-Windows-v0.6.2'),
     [string] $AppVersion = '0.6.2'
@@ -70,6 +70,8 @@ $localFxPath = '$APPDIR\javafx-base-21.0.13-win.jar;$APPDIR\javafx-graphics-21.0
 if ($LASTEXITCODE -ne 0) { throw 'Windows app image creation failed.' }
 
 Copy-Item -LiteralPath (Join-Path $imageOutput 'DoTPet') -Destination $destinationPath -Recurse
+Copy-Item -LiteralPath (Join-Path $taskRoot 'LICENSE'), (Join-Path $taskRoot 'THIRD_PARTY_NOTICES.md') -Destination $destinationPath
+Copy-Item -LiteralPath (Join-Path $taskRoot 'docs\code-signing-policy.md') -Destination (Join-Path $destinationPath 'Code-signing-policy.md')
 $instructions = @'
 DoT Pet 실행 방법
 
